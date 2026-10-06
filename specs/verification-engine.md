@@ -1,6 +1,6 @@
 ---
-title: TOKEN-VERIFICATION
-name: Tokenization Verification Engine Standard
+title: TOKENIZATION-VERIFICATION
+name: Tokenization Verification Standard
 status: draft
 category: Best Current Practice
 contributors: Jimmy Debe <@jimstir>
@@ -11,76 +11,153 @@ contributors: Jimmy Debe <@jimstir>
 
 This document defines a standardized framework for representing, verifying, and enforcing claims associated with tokenized securities and other tokenized real-world assets on-chain.
 
-The standard focuses more on the consumer interacting with asset on-chain. There need to be a universal standard for verifying information about the tokenized asset. Issuers may be providing publicly available information but each entity has their own process and tokenization format with off-chain claims, time-limited attestations, custodians, brokers, transfer agents, or other trusted entities. These should to be identified and veified on-chain for independent auditing.
+The standard focuses more on the consumers of tokenized products. There is a need to have a universal standard for verifying the information accoicated with the different parts of these products. Issuers may be providing publicly available information but each product has different processes, custodians, brokers, transfer agents, tokenization formats with off-chain claims, or other trusted entities. These should to be identified and veified on-chain for independent auditing.
 
 ## Motivation
 
-TAVS defines a common model for:
+The Tokenized Asset Verification Standard (TAVS) is a tool aimed at protecting the consumer.
+Tokenization is a growing space,
+with regulation frameworks still being introduced in different juridictions worldwide.
+For example, the SEC recently announced a [Request for Comment]() regarding exemptive relief for trading Tokenized NMS Stocks,
+which is the type of regulatory gap this standard was created to bridge.
+The flexibility of tokenization allows issuers to create different models for their products.
+While this flexibility brings the benefits of blockchain to a wider audience,
+it also introduces critical vulnerabilities that may be overlooked.
 
-1. identifying the underlying asset;
-2. representing the rights associated with the token;
-3. identifying the parties responsible for relevant claims;
-4. producing time-bounded attestations for off-chain facts;
-5. reconciling verified underlying assets against token supply;
-6. exposing verification evidence through a standardized interface;
-7. representing verification failures as explicit on-chain states; and
-8. applying predefined on-chain consequences when required guarantees become stale, revoked, inconsistent, or unavailable.
+A smart contract can prove how many tokens exist, ensure self custody, and manage access,
+but it can not prove the real world state of the physical asset backing it.
+Currently token issuers attempt to solve this problem using off-chain legal strucutres 
+and attestations linked to the token.
+While this demonstrates a desire for transparency, the reality is often opaque.
+Most consumers do not understand dense legal documents, nor do they know how to verify relevant information.
 
-The goal is not to establish absolute truth about an off-chain asset. Instead, the specification establishes an on-chain defined and auditable structure interface that will improve the trust associated with tokenized assets. 
+Instead, users are forced to trust the issuer's product landing page.
+This leaves room for malicious or negligent issuers to bury clever liability waivers in legal documents or
+take advantage of the time lag between blockchain execution and real-world settlement.
+Furthermore, traditional compliance models force retail users to expose their private financial data on public ledgers just to meet KYC/AML requirements.
 
-This is achieved through a public interface and attestation registry all on-chain. The interface will define values for participants eligibility, participants classifications(e.g. allowed amounts, jurdisdiction rules),
+### The Need for Independent Verification
 
-**guarantee boundary**: what is being claimed, who is responsible for the claim, when the claim was verified, how long the verification remains valid, and what happens when the guarantee is no longer valid.
+The tokenization ecosystem currently suffers from a reliance on self-certification and
+fragmented architectures.
+Multiple issuers might tokenize the exact same underlying asset (e.g., Apple common stock)
+using different legal structures, custodians, and oracle systems.
+In many cases, these assets are tokenized by unaffiliated third parties without the underlying issuer's involvement.
+An tokenization envirnoment keeps the consumer vunderable.
+As regulators start to require secondary markets and
+Tokenized Securities Venues to verify that a tokenized asset provides the same rights as traditional venues.
+Manual verification becomes difficult to commidate across the industry.
+If an exchange or
+DeFi protocol wants to list these assets, they need a standardized,
+machine-readable way for independent auditors to attest to off-chain facts without relying on the token issuer's marketing materials.
+Since the future is on-chain, building the machine-readable infrustruce is important.
+To solve these issues, this standard establishes the following core objectives:
 
-Tokenized securities may represent the same underlying security while using substantially different architectures. For example, two different platform can present offer the same NVIDIA Corporation common stock but use different blockchains, custodians, smart contracts designs, attesstation providers, oracle systems, and legal structures.
+- Asset Identification: Standardizing how the underlying real-world asset is identified on-chain.
+- Rights Representation: Providing a machine-readable format to define the legal rights and privileges associated with the tokenized asset.
+- Entity Accountability: Cryptographically defining which specific attestors are recognized for particular claims, and securely anchoring their on-chain attestations to their verifiable real-world resources. This includes establishing a verifiable cryptographic link between an entity's on-chain signatures and their real-world legal documents.
+- Time-Bounded Attestations: Requiring cryptographic, time-limited attestations for off-chain claims to prevent reliance on expired data.
+- Supply Backing: Comparing the on-chain token supply against authorized custody attestations to mathematically ensure the asset is not under-collateralized.
+- Standardized Evidence Interface: Exposing all verification evidence and attestation metadata through a unified, public smart contract interface.
+- Explicit Failure States: Representing verification failures (e.g., data conflicts, under-collateralization) as explicit, machine-readable on-chain states.
+- Automated Enforcement: Applying predefined on-chain consequences (such as halting transfers or freezing minting) when required guarantees become stale, revoked, inconsistent, or unavailable.
 
-Consequently, the existence of an on-chain token and the publication of supporting information do not by themselves establish that the token currently has the characteristics a user expects.
+### Architectural Goals
 
-A token contract can prove on-chain that a token exists on-chain, a particular amount is outstanding, a particular attestation was signed, a particular contract is currently configured in a certain way and particular events occurred on-chain. It cannot directly prove an off-chain fact such as the current amount of common stock is in the tokenized securites entity holds. That is why all tokenized product require off-chain evidence to remain valid.
+To achieve the core objectives this standard utilizes a modular architecture.
+By separating concerns into distinct, interconnected profile records 
+(Asset, Entity, Participant, and Attestation),
+the standard can support highly varied models through a single unified interface.
+For example, custodian-backed assets, multi-attestor verifications, or
+issuer sponsored securities.
+This approach ensures that economic exposure is clearly separated from actual legal ownership and specific rights.
 
-TAVS therefore separates **on-chain verification** from **off-chain attestation** and defines how the two interact.
+Rather than relying on blind trust,
+the standard mandates a system of cryptographic evidence.
+Legal documents related to custody operations or
+the underlying entity are not stored as raw text on-chain.
+Instead, they are hashed, signed, and published as time-bounded attestations by the responsible party.
+This creates a independently verifiable historical record of all compliance claims and
+explicitly captures any verification failures as immediate on-chain state changes.
 
+Finally, the standard encourages participant privacy.
+While verification for assets and entities should be publicly auditable,
+participant identity information must remain private.
+By utilizing zero-knowledge proofs and selective disclosure (such as authorized viewing keys),
+the standard allows approved parties to audit the compliance of the tokenized product without exposing retail financial data to the public ledger.
 
-The goals of this specification are to:
+The goal is not to establish absolute truth about an off-chain asset.
+Instead, the standard establishes a clearly defined,
+auditable on-chain interface that places the relationship between the consumer and
+the issuer at center stage.
+By forcing the issuer's claims into full public view,
+it strips away opaque legal shields and
+demands true cryptographic accountability.
 
-1. Provide a standardized representation of tokenized-asset claims.
-2. Create verification profiles and attestation profiles: tokenized-security verification, Custodian-backed verification, Multi-attestor verification, Issuer-sponsored security verification, etc
-3. Identify the party responsible for establishing each off-chain claim.
-4. Asstesttion are public auditable, or auditable by approve persons.
-5. Legal documents related to the tokenization custody operations and/or the custody entity should be attessted by the enitty, hashed and signed. hash should be presented on chain.
-5. Time based attestations, validity periods, etc
-5. Allow users to independently inspect the evidence supporting an asset.
-6. Participant identity information should be private with approve audit keys(EthSystems)
-8. Represent verification failures through explicit on-chain states.
-10. Preserve historical verification and attestation information.
-11. Distinguish economic exposure from actual ownership and other legal rights.
+Rather than relying on abstract legal concepts,
+the standard translates off-chain guarantees into machine-readable format for every tokenized asset.
+By mathematically locking these guarantees on-chain, the system explicitly defines:
 
-
-Instead, the specification defines which attestors are recognized for particular claims and what guarantees their attestations provide.
+- What is being claimed;
+- Who is legally responsible for the claim;
+- When the claim was verified;
+- How long the verification remains valid; and
+- What happens on-chain when that guarantee is no longer valid.
 
 ## Specification
 
-The standard consist of a core registry for active requirements, participant eligibility and classification. Issuer and custody attestations. 
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and "OPTIONAL" in this document are to be interpreted as described in
+[RFC 2119](http://tools.ietf.org/html/rfc2119).
+
+The standard consist of a core attestation registry to will handle the registration of all parties,
+expose a verification interface, verification state status and attestation submissions.
+The registry is a smart contract that MAY be deployed by any party.
+The owner of the contract does not need to be asset issuers,
+nor does the contract owner have any authority to update the state of an registered profile record.
 
 ### Attestation Registry
 
-The attestation has a few registry Profiles, that the verification interface can access if they were registered in the registry.
-The recommended defined role profiles to support tokenized assets verification discussed in this document will be entity profile, participant profile, and asset profile.
-Each profile needs an on chain identity that identifies its profile.
-
-The attestation registry MUST define profiles for each role in the system.
-Every profile acting within the ecosystem MUST have an on-chain identity.
+There are a few registry profile records that the verification interface will access to complete verification tasks.
+The RECOMMENDED profiles defined in a registry is the `ENTITY` profile, `PARTICIPANT` profile, and `ASSET` profile.
+An `ATTESTATION` profile record is submitted by either an entity or
+participant profile about a specific asset profile.
+Each profile MUST have an on chain identity.
 This identity will be used for all attestations and verification processes.
-The RECOMMENDED defined profiles are `ENTITY`, `PARTICIPANT`,
-and `ASSET`.
+
+#### Visibility Preference
+
+To support both public auditability and zero-knowledge privacy,
+the standard SHOULD support two types of visibility preferences.
+The `VisibilityPreference` flag attached to an `PARTICIPANT` or
+`ENTITY` indicates the interface preference.
+It is RECOMMENDED that ENTITY profiles remain public for transparency.
+However, an `ENTITY` MAY utilize shielded profiles for specific use cases requiring confidentiality."
+Below is the `VisibilityPreference` flag mode:
+
+```solidity
+enum VisibilityPreference { TRANSPARENT, SHIELDED }
+```
+
+- **TRANSPARENT:** The registry MUST store the profile record, attestations,
+and other results in public smart contract storage.
+This mode is RECOMMENDED for `ENTITY` and `ASSET` profiles.
+- **SHIELDED:** Attestations related to profiles  SHOULD NOT be accesible to the public.
+Instead, the registry SHOULD hash the raw inputs into a leaf and
+insert it into the public Merkle Tree(For more information see the next section).
+This mode is RECOMMENDED for `PARTICIPANT` profiles opting for privacy.
 
 #### Attestation Merkle Tree
 
-To support privacy-preserving verification for `PARTICIPANT` profiles, the attestation registry SHOULD support an Attestation Tree, which is a merkle tree of attestations which is adopted from [EthSystem's Attested Shielded Pool](https://github.com/ethsystems/specs/blob/main/specs/3/README.md).
+To support privacy-preserving verification for `PARTICIPANT` profiles,
+the attestation registry SHOULD support an attestation tree.
+The merkle tree of attestations presented in this standard is adopted from [EthSystem's Attested Shielded Pool](https://github.com/ethsystems/specs/blob/main/specs/3/README.md).
+Although their implementation primarily targets private on-chain payments,
+the underlying zero-knowledge mechanics provides an ideal foundation for the privacy requirements for tokenized ecosystems."
 
 When an attestation is issued by a profile,
 the registry MUST compute the attestation leaf on-chain rather than accepting a precomputed leaf.
-By enforcing on-chain computation, the registry mathematically guarantees that the underlying data strictly adheres to verification engine defined rules.
+By enforcing on-chain computation,
+the registry mathematically guarantees that the underlying data strictly adheres to verification engine defined rules.
 The attestation leaf SHOULD bind the following parameters:
 
 - The participant's shielded spending key (`owner_pubkey`).
@@ -96,36 +173,193 @@ the subject key hash, the attester, and the validity window.
 This allows participants to index the tree off-chain and
 compute the exact Merkle inclusion paths necessary for generating valid Zero-Knowledge (ZK) proofs.
 
+Attestation Leaf Computation 
+When the registry computes the attestation leaf on-chain, it MUST use a ZK-friendly cryptographic hash function (e.g., Poseidon) to ensure efficient proof generation off-chain.
 
-### Asset Registration
+The leaf commitment is defined mathematically as: leaf_commitment = Hash(owner_pubkey, attester, validity_window, profile_attributes_hash, salt)
 
-Before an Asset is considered compliant with TAVS, the implementation MUST register the following information:
+Where:
+
+owner_pubkey: The participant's shielded spending key.
+attester: The authorized issuer of the attestation.
+validity_window: The concatenated issued_at and expires_at timestamps.
+profile_attributes_hash: A hash of the specific verification attributes (e.g., jurisdiction, eligibility).
+salt: A cryptographically secure random blinding factor provided by the participant to ensure the leaf is perfectly hiding and resistant to brute-force attacks.
+
+
+### Attestation Framework
+
+The verification engine adopts the proposed attestation schema established by [EthSystem's Attested Shielded Pool](https://github.com/ethsystems/specs/blob/main/specs/3/README.md). 
+Regardless of the profile type (Entity, Participant, or Asset) or
+the privacy mode being used,
+every attestation MUST implement the following attributes:
+
+1. Subject Identifier: The cryptographic identity of the actor or asset the attestation applies to.
+The format of this identifier depends on the profile:
+- For Entities: A Decentralized Identifier (DID) and/or public on-chain address.
+- For Assets: A unique `assetId` derived from the smart contract and underlying asset.
+- For Participants (Shielded): A cryptographic hash of their Shielded Spending Key (e.g., `owner_pubkey`).
+2. Attester: The on-chain address of the authorized compliance provider, auditor,
+or issuer who verified the off-chain facts and
+cryptographically signed the attestation.
+3. Validity Window: The strictly defined timeframe (issued_at and expires_at) during which the attestation is considered legally or procedurally valid.
+4. Attestation Type: A standardized identifier (e.g., PARTICIPANT_ELIGIBLE, CUSTODY_VERIFIED) defining exactly what claim or rule the attestation is verifying.
+5. Evidence Commitment: A cryptographic hash (evidenceHash) of the underlying off-chain documentation (such as a KYC report or legal contract). This ensures the underlying evidence can be audited off-chain without exposing private data on the public ledger.
+6. Revocation Status: A standardized status indicating if the attestation is active, expired, or explicitly revoked by the Attester (e.g., due to a sanctions match or expired legal agreement).
+
+The Verification Engine extends this structure to support the complex requirements of tokenized real-world assets.
+A claim concerning an off-chain fact MUST identify the entity responsible for establishing that fact.
+The issuer SHOULD NOT be treated as the sole source of evidence for claims where the verification policy requires an independent Attestor.
+
+#### Profile Definitions
+
+The Verification standard relies on the interplay of these profiles to map critical relationships (e.g., binding an Asset Profile to an Entity Profile to establish the authorized issuer)
+
+Participant Profile:
+The participant uses a Shielded Spending Key to generate ZK proofs.
+The participant also has a Viewing Key.
+If an auditor or regulator needs to see the private participant's identity or transaction history, the participant selectively shares the Viewing Key with them. The auditor can now decrypt and verify the data, but because they don't have the Spending Key, they cannot steal funds or act on the participant's behalf.
+
+#### Attestation Profiles Linking
+
+Every externally sourced verification claim by an attestation profile SHOULD contain a reference to its supporting evidence.
+This MAY be:
+
+* a document hash;
+* a URI;
+* an API response hash;
+* an on-chain record;
+* a signed data object;
+* another content-addressed reference.
+The implementation SHOULD allow a verifier to determine:
+
+#### Attestor Registration
+
+The implementation MUST maintain a registry containing recognized attestors.
+Each attestor record SHOULD include:
 
 ```text
-assetId
-underlyingAssetIdentifier
-assetName
-issuer
-tokenContract
-representationRatio
-rightsProfile
-attestorRegistry
-verificationPolicy
+attestor
+attestationTypes
+authorizationStatus
+validFrom
+validUntil
+revoked
 ```
 
-#### Underlying Asset identifier
+The specific mechanism by which an entity becomes an authorized attestor is outside the scope of the base technical specification.
 
-The implementation MUST create an on-chain identifier for the underlying asset that correndsponds to off-chain researces/ information held by the issuer/custodian.
+#### Attestation Schema
 
-The identifier SHOULD NOT rely exclusively on token symbol, token name, blockchain address,or issuer-selected ticker. For example, two unrelated tokens MUST NOT be considered equivalent merely because both use the symbol `NVDA`.
+The Verification Engine MUST define standardized smart contract schemas for each profile and attestation. Every schema MUST include the `VisibilityPreference` flag. 
 
-#### Representation Ratio
+```solidity
+struct Attestation {
+    bytes32 id;
+    VisibilityPreference visibility;
+    bytes32 attestationType;
+    bytes resultData; // Flexible ABI-encoded result (e.g., limits, states)
+    address attestor;
+    uint256 attestedAt;
+    uint256 validUntil;
+    bytes32 evidenceHash;
+    string evidenceURI;
+    bytes32 subjectIdentifier;
+    bool revoked;
+    bytes signature;
+}
 
-The implementation SHOULD specify the relationship between token units and underlying units.
-Example:
+```
+
+- evidenceHash: he evidenceHash is the Keccak256 hash of the original off-chain PDF or legal document. This proves to the public exactly which document the auditor was looking at, without needing to upload a 50-page PDF to the blockchain.
+- signature: utilize EIP-712 (Typed Data Signatures)
+- string evidenceURI:  It is RECOMMENDED to use [CID, Content Identifiers]() for the `evidenceURI` to ensure decentralized, immutable document retrieval. 
+However, standard HTTP/HTTPS string URLs MAY be used,
+as many traditional institutions and tokenized asset issuers currently rely on centralized domain resources rather than decentralized storage networks.
+
+#### Time-Bounded Verification
+
+An attestation MUST have a validity period.
+An implementation MUST NOT treat an expired attestation as current evidence.
+At minimum:
 
 ```text
-1 token = 1 underlying share
+attestedAt < validUntil
+```
+
+MUST hold for a valid attestation.
+
+After:
+
+```text
+block.timestamp > validUntil
+```
+
+The attestation MUST be considered stale unless replaced or
+renewed according to the verification policy.
+This requirement exists because an attestation represents a statement about an external state at a particular point in time, not an indefinite guarantee.
+
+#### Attestation History
+
+A compliant implementation SHOULD preserve historical verification information.
+The history SHOULD include:
+
+* previous Attestations;
+* Attestation revocations;
+* backing quantities;
+* token supply;
+* verification-state changes;
+* issuer changes;
+* custodian changes;
+* rights changes;
+* contract upgrades;
+* pauses;
+* corporate actions.
+
+Historical records SHOULD be append-only. 
+This allows a verifier to reconstruct the verification state of an asset profile, entity profile or participant profile at a previous point in time.
+
+An issuer can use the entity profile.
+This SHOULD identify the entity responsible for issuing or sponsoring the Tokenized Asset.
+This should be represented by an address that is also confirm on a public domain owned/affiliate of issuing/custodain entity. 
+Where the underlying issuer's authorization is required, the implementation MUST provide a mechanism to record:
+Mechanism for unauthorized tokenization include tokens minted with out the proper attestation commited on-chain.
+
+#### Attestation Revocation
+
+Attestors MUST have a mechanism to revoke an Attestation where the asserted fact is no longer valid or the Attestor determines that the Attestation should no longer be relied upon.
+A revoked Attestation MUST NOT satisfy a verification requirement.
+This is done by an entity profile attestation.
+Revocation SHOULD record:
+
+```text
+attestationId
+revokedAt
+revocationReason
+revokedBy
+```
+
+The revocation reason MAY be privacy-preserving or represented by a standardized reason code.
+Attestors MUST have a mechanism to revoke an Attestation when the asserted fact is no longer valid (e.g., due to a sanctions match, KYC expiration, or regulatory direction) or the Attestor determines the Attestation should no longer be relied upon. A revoked Attestation MUST NOT satisfy a verification requirement.
+
+The authorized Attester MUST compute the Merkle path for the target attestation leaf.
+The Attester MUST call the registry to explicitly revoke the leaf using this path.
+The registry MUST update its state to nullify the leaf and emit a revocation event.
+Once a leaf is revoked, any Zero-Knowledge Membership Proof attempting to reference that leaf MUST fail verification.
+
+The revocation reason MAY be privacy-preserving or represented by a standardized reason code.
+
+### Entity Profile
+
+```solidity
+
+struct EntityProfile {
+    bytes32 did; // Decentralized Identifier
+    VisibilityPreference visibility;
+    address authorizedKey;
+    bytes32 legalDocumentHash;
+    bool isActive;
+}
 ```
 
 ####  Rights Profile interface
@@ -154,6 +388,24 @@ The implementation SHOULD expose the relevant parties and
 legal structure through attestations, 
 so that users can understand where claims ultimately reside.
 
+#### Cryptographic Proof of Audit (Auditor Authorization)
+
+When an authorized Auditor (acting under an `ENTITY` profile) needs to issue a secondary attestation regarding a `SHIELDED` participant, the smart contract MUST cryptographically verify that the Auditor was explicitly granted access to the private data. The smart contract CANNOT rely on off-chain trust assumptions.
+
+To satisfy this requirement:
+1. The participant MUST securely share their **Viewing Key** with the Auditor off-chain.
+2. The Auditor MUST generate a **ZK Proof of Audit**. This cryptographic proof asserts: *"I possess the valid Viewing Key for a specific anonymous leaf in the Merkle Tree, and I am signing this new on-chain transaction based on its contents."*
+3. The registry MUST expose an interface for the Auditor to submit this proof alongside their new attestation.
+
+```solidity
+function submitAuditorAttestation(
+    bytes32 newAttestationType,
+    bytes memory newResultData,
+    bytes calldata zkProofOfAudit
+) external;
+```
+The smart contract MUST verify the `zkProofOfAudit` against the public Merkle Root before accepting the Auditor's submission, guaranteeing on-chain that the `ENTITY` was authorized without exposing the Viewing Key.
+
 #### Entity Profile Decentralized Identity
 
 To verify the association, the entity profile should create a public signing key. This can be done by using a DID, decentralized identifiers,and verification process.
@@ -170,183 +422,113 @@ Decentralized Identity registration flow in the attestation registry.
 5. Entity signs attestations with the DID verification key
 6. Verifier receives attestation
 
-### Participant Eligibility
+### Asset Profile
 
-An implementation MAY represent eligibility through an on-chain attestation or zero-knowledge proof.
-A participant's eligibility status MUST NOT expose unnecessary underlying identity information.
-
-### Attestation Framework
-
-The verification engine adopts the proposed attestation schema established by [EthSystem's Attested Shielded Pool](https://github.com/ethsystems/specs/blob/main/specs/3/README.md). 
-Regardless of the profile type (Entity, Participant, or Asset) or
-the privacy mode being used,
-every attestation MUST implement the following attributes:
-
-1. Subject Identifier: The cryptographic identity of the actor or asset the attestation applies to.
-The format of this identifier depends on the profile:
-- For Entities: A Decentralized Identifier (DID) and/or public on-chain address.
-- For Assets: A unique `assetId` derived from the smart contract and underlying asset.
-- For Participants (Shielded): A cryptographic hash of their Shielded Spending Key (e.g., `owner_pubkey`).
-2. Attester: The on-chain address of the authorized compliance provider, auditor,
-or issuer who verified the off-chain facts and
-cryptographically signed the attestation.
-3. Validity Window: The strictly defined timeframe (issued_at and expires_at) during which the attestation is considered legally or procedurally valid.
-4. Attestation Type: A standardized identifier (e.g., PARTICIPANT_ELIGIBLE, CUSTODY_VERIFIED) defining exactly what claim or rule the attestation is verifying.
-5. Evidence Commitment: A cryptographic hash (evidenceHash) of the underlying off-chain documentation (such as a KYC report or legal contract). This ensures the underlying evidence can be audited off-chain without exposing private data on the public ledger.
-6. Revocation Status: A standardized status indicating if the attestation is active, expired, or explicitly revoked by the Attester (e.g., due to a sanctions match or expired legal agreement).
-
-The Verification Engine extends this structure to support the complex requirements of tokenized real-world assets.
-
-A claim concerning an off-chain fact MUST identify the entity responsible for establishing that fact.
-
-The issuer SHOULD NOT be treated as the sole source of evidence for claims where the verification policy requires an independent Attestor.
-
-#### Profile Definitions
-
-The Verification Engine relies on the interplay of these profiles to map critical relationships (e.g., binding an Asset Profile to an Entity Profile to establish the authorized issuer)
-
-Participant Profile:
-The participant uses a Shielded Spending Key to generate ZK proofs.
-The participant also has a Viewing Key.
-If an auditor or regulator needs to see the private participant's identity or transaction history, the participant selectively shares the Viewing Key with them. The auditor can now decrypt and verify the data, but because they don't have the Spending Key, they cannot steal funds or act on the participant's behalf.
-
-
-
-#### Attestor Registry
-
-The implementation MUST maintain a registry containing recognized Attestors.
-
-Each Attestor record SHOULD include:
-
-```text
-attestor
-attestationTypes
-authorizationStatus
-validFrom
-validUntil
-revoked
-```
-
-The specific mechanism by which an entity becomes an authorized Attestor is outside the scope of the base technical specification.
-
-## 11.3 Attestation Structure
-
-An Attestation SHOULD contain at least:
+A token represented in the verification engine is considered a tokenized asset if an asset profile is declared.
+This is REQUIRED to differeniate on-chain tokens from tokens that have real world attachments or
+claims to them.
+Before an Asset is considered compliant, the implementation SHOULD register at minimum the following information:
 
 ```solidity
-struct Attestation {
-    bytes32 assetId;
-    address attestor;
-
-    uint256 quantity;
-    uint256 attestedAt;
-    uint256 validUntil;
-
-    bytes32 evidenceHash;
-
-    bytes32 subjectIdentifier;
-
-    bool revoked;
-
-    bytes signature;
+struct AssetId{
+  bytes32 assetId;
+  uint256 chainId;
+  address issuer;
+  address tokenContract;
+  
 }
 ```
 
-The final implementation MAY use a different encoding provided that equivalent information is available.
+The `chainId` is MAY NOT be defined in cases where justified.
+The `assetId` value SHOULD be generated at the time of asset registration.
+In some cases there can be more than one issuing party responisble for an asset tokenization.
+The `issuer` value SHOULD be the main identifying party that has real world resources publicly sharing the address ownerships and activiy.
+In other words, this address does not need to be the owner of the token contract,
+only a publicly idenitifing party.
 
-# 12. Time-Bounded Verification
+#### Asset Metadata
 
-An Attestation MUST have a validity period.
-An implementation MUST NOT treat an expired Attestation as current evidence.
-At minimum:
+The tokenization landscape is a fast pace ever changing envirnoment.
 
-```text
-attestedAt < validUntil
+
+```solidity
+struct AssetMetadata{
+    bytes32 assetId;
+    uint256 timestamp; 
+    uint256 representationRatio;                
+    Attest[] attestations;         
+    // The three core rights, represented by their attestationID
+    bytes32 redemptionRightAttestationId;
+    bytes32 insolvencyProtection;
+    bytes32 nativeOwnership;
+    
+    address[] extensionMetadata; // Optional
+}
 ```
 
-MUST hold for a valid Attestation.
+The core three rights defined in the metadata SHOULD be the value of `attestationID`.
+This is RECOMMENDED to discourage an issuer/owner from declaring flase rights claims about the asset on-chain,
+while the off-chain legal structure is the opposite.
+More information about attestation values are described in the [Attestation Framework]().
+- If the company that created the token goes out of business, your underlying asset is safe in a separate vault and belongs to you, not their creditors.
+- Whoever holds the token in their crypto wallet is the legal owner of the asset. The blockchain is the final source of truth, rather than a traditional transfer agent's private database.
 
-After:
+The issuer SHOULD define an `underlyingAssetIdentifier` for the underlying asset.
+The identifier SHOULD NOT rely exclusively on token symbol, token name,
+blockchain address, or issuer-selected ticker.
+For example, two unrelated tokens MUST NOT be considered equivalent merely because both use the symbol `NVDA`.
 
-```text
-block.timestamp > validUntil
-```
+extensionMetadata: votingRights, dividendRights
+ISSUER_NOTICE_PROVIDED : an auditor must submit an attestation proving that the written notice was sent to the underlying stock issuer(if the issuer is registered in the registry, than they can be the auditor).
 
-the Attestation MUST be considered stale unless replaced or renewed according to the verification policy.
-This requirement exists because an Attestation represents a statement about an external state at a particular point in time, not an indefinite guarantee.
+#### Representation Ratio
 
-#### Attestation History
-
-A compliant implementation SHOULD preserve historical verification information.
-
-The history SHOULD include:
-
-* previous Attestations;
-* Attestation revocations;
-* backing quantities;
-* token supply;
-* verification-state changes;
-* issuer changes;
-* custodian changes;
-* rights changes;
-* contract upgrades;
-* pauses;
-* corporate actions.
-
-Historical records SHOULD be append-only. 
-This allows a verifier to reconstruct the verification state of an Asset at a previous point in time.
-
-An issuer can use the entity profile.
-This SHOULD identify the entity responsible for issuing or sponsoring the Tokenized Asset.
-This should be represented by an address that is also confirm on a public domain owned/affiliate of issuing/custodain entity. 
-Where the underlying issuer's authorization is required, the implementation MUST provide a mechanism to record:
-Mechanism for unauthorized tokenization include tokens minted with out the proper attestation commited on-chain.
-
-# 13. Revocation
-
-Attestors MUST have a mechanism to revoke an Attestation where the asserted fact is no longer valid or the Attestor determines that the Attestation should no longer be relied upon.
-A revoked Attestation MUST NOT satisfy a verification requirement.
-This is done by an entity profile attestation.
-Revocation SHOULD record:
+The implementation SHOULD specify the relationship between token units and underlying units.
+Example:
 
 ```text
-attestationId
-revokedAt
-revocationReason
-revokedBy
+1 token = 1 underlying share
 ```
+#### Minting and Burning
 
-The revocation reason MAY be privacy-preserving or represented by a standardized reason code.
-
-## Minting and Burning
-
-### Minting
-
-Minting MUST NOT increase token supply beyond the quantity permitted by the entity profile that is assigned to minting and burn tasks.
+The address able to  create tokens, mint, or 
+destory tokens, burning, MUST be publicly defined.
+Minting SHOULD NOT increase token supply beyond the quantity permitted by the attestation supporting the corresponding increase in backing.
+ profile that is assigned to minting and burn tasks.
 A mint operation SHOULD reference the Attestation supporting the corresponding increase in backing.
 
-###  Burning
+Burning SHOULD NOT decrease token supply.
+Entity attestation are responsible for  SHOULD record the relationship between the token burn and the corresponding change in the underlying custody position where that information is available.
 
-Burning MUST decrease token supply.
-Implementations SHOULD record the relationship between the token burn and the corresponding change in the underlying custody position where that information is available.
+### Participant Profile 
 
-#### Attestation Profiles Linking
+#### Eligibility & Classification
 
-Every externally sourced verification claim by an attestation profile SHOULD contain a reference to its supporting evidence.
-This MAY be:
+An implementation MAY represent eligibility through an on-chain attestation or zero-knowledge proof.
+A participant's eligibility status MUST NOT expose unnecessary underlying identity information.
+Participants MAY choose their `VisibilityPreference` (Transparent or Shielded) depending on their operational privacy requirements.
 
-* a document hash;
-* a URI;
-* an API response hash;
-* an on-chain record;
-* a signed data object;
-* another content-addressed reference.
-The implementation SHOULD allow a verifier to determine:
+#### Format
 
-## Verification Structure
+```solidity
+struct ParticipantProfile {
+    address wallet;
+    uint256 participantType;
+    bytes32 shieldedKeyHash; // For SHIELDED profiles, this is the commitment
+    VisibilityPreference visibility;
+    bytes32 jurisdiction;
+}
+```
+#### KYC
 
+#### Transfer Restriction
+
+
+### Verification Interface
+
+The verification interface allows the verifier to collect all relevant information can calculate a the current state of a tokenized asset.
+The following are the RECOMMENDED states based on public values defined in 
 Every registered Tokenized Asset MUST have a current Verification State.
-
 The base states are:
 
 ```solidity
@@ -356,45 +538,29 @@ enum VerificationState {
     STALE,
     UNDERBACKED,
     REVOKED,
-    RECONCILIATION_FAILURE
 }
 ```
 
-### UNVERIFIED
+- `VERIFIED`: All REQUIRED defined attributes for the RECOMMENDED profiles are defined. evidence is valid.
+The asset satisfies the all defined attributes of the verification policy.
+Enforcement: Normal protocol operations MAY continue.
 
-The required evidence does not currently establish the Asset's required claims.
+- `UNVERIFIED`: The REQUIRED defined attributes for the RECOMMENDED profiles are not all defined.
+For example, no attestations, unregistered attestor, and so on.
+Enforcement: The asset MUST be  flagged as `UNVERIFIED`.
 
-Examples:
+- `STALE` : A `VERIFIED` asset profile no longer meets the validity period.
+Enforcement: New minting SHOULD be disabled, unless separate defined policy explicitly permits otherwise. This disabled SHOULD be an on-chain flag.
 
-* no Attestation;
-* unauthorized Attestor;
-* missing required evidence.
+- `UNDERBACKED`: The verified quantity of underlying assets is less than the required token supply.
+This flag MUST be attached with an attestation profile.
+Enforcement: New issuance SHOULD be disabled.
 
-### VERIFIED
+- `REVOKED`: An authorized entity profile submits an revocation attestation.
+SHOULD be a valid revoke and not a reserved/overturn revoke.
+Enforcement: New issuance SHOULD be disabled. Token transfers SHOULD be halted.
 
-All required evidence is valid and current.
-
-The Asset satisfies its declared verification policy.
-
-### STALE
-
-Required evidence existed but is no longer within its permitted validity period.
-
-### UNDERBACKED
-
-The verified quantity of underlying assets is less than the required token supply.
-
-### REVOKED
-
-A required Attestation has been explicitly revoked.
-
-### RECONCILIATION_FAILURE
-
-Required data sources disagree or
-the implementation cannot establish the required relationship between the underlying Asset 
-and token supply.
-
-# 18. State Transitions
+#### State Transitions
 
 The implementation MUST define deterministic transitions between Verification States.
 
@@ -415,63 +581,23 @@ Example:
 
 VERIFIED
    │
-   │ backing < supply
+   │ backing < supply attestation
    ▼
 UNDERBACKED
 
 VERIFIED
    │
-   │ attestation revoked
+   │ revoke attestation
    ▼
 REVOKED
 
-VERIFIED
-   │
-   │ conflicting evidence
-   ▼
-RECONCILIATION_FAILURE
 ```
 
-The implementation MAY define additional states, but MUST preserve the semantics of the required base states.
 
-# 19. Enforcement
+#### Interface Format
 
-Verification states MUST have defined protocol consequences.
-At minimum:
-
-### VERIFIED
-
-Normal protocol operations MAY continue.
-
-### STALE
-
-New issuance SHOULD be disabled unless the implementation's policy explicitly permits otherwise. This disabled SHOULD be an on-chain flag.
-
-### UNDERBACKED
-
-New issuance SHOULD be disabled. 
-The implementation SHOULD apply additional restrictions to prevent an increase in the unsupported token position.
-
-### REVOKED
-
-New issuance MUST be disabled.
-
-### UNVERIFIED
-
-The Asset or the entity MUST NOT be represented as verified by a compliant verification profile.
-
-### RECONCILIATION_FAILURE
-
-New issuance MUST be disabled.
-The exact treatment of secondary transfers MAY depend on the legal and regulatory structure of the Asset.
-
-It is not REQUIRED that all transfers are revert for every failure state.
-
-
-## Verification Interface
-
-A compliant implementation MUST expose a machine-readable verification interface.
-The interface MUST allow a user or external verifier to determine:
+A compliant implementation MUST expose a machine-readable verification interface for each profile.
+The interface MUST allow any party to verify the following:
 
 ```text
 asset identity
@@ -490,43 +616,8 @@ current verification state
 verification failure reason
 ```
 
-An example response:
 
-```json
-{
-  "asset": {
-    "id": "NVDA",
-    "identifier": "UNDERLYING-ASSET-ID"
-  },
-  "token": {
-    "contract": "0x...",
-    "supply": "1000000"
-  },
-  "representation": {
-    "ratio": "1:1",
-    "type": "underlying-security"
-  },
-  "backing": {
-    "verifiedQuantity": "1000000",
-    "attestor": "0x...",
-    "attestedAt": 1790179200,
-    "validUntil": 1790265600,
-    "status": "VALID"
-  },
-  "rights": {
-    "voting": true,
-    "dividends": true,
-    "redemption": true
-  },
-  "verification": {
-    "state": "VERIFIED"
-  }
-}
-```
-
-The interface MUST NOT represent an Asset as fully verified merely because the issuer has published an unsupported assertion.
-
-# 25. Contract Integrity
+#### Contract Integrity
 
 The verification interface SHOULD expose security-relevant properties of the Tokenized Asset contract.
 
@@ -544,9 +635,9 @@ transfer restrictions
 
 An implementation SHOULD indicate whether a contract is immutable; upgradeable; paused ;permissioned; ubject to an external administrator.
 
-# 27. Security Considerations
+### Security Considerations
 
-## 27.1 Attestor Compromise
+#### Attestor Compromise
 
 A compromised Attestor may issue false or incorrect Attestations.
 This standard does not cryptographically eliminate this risk.
@@ -558,15 +649,15 @@ The protocol MUST therefore define:
 * emergency states;
 * optional multi-attestor requirements.
 
-## 27.2 Stale Evidence
+#### Stale Evidence
 
-Long-lived Attestations create the risk that a previously correct statement is treated as current.
+Long-lived attestations create the risk that a previously correct statement is treated as current.
 Implementations SHOULD use short, policy-defined validity periods for high-risk claims.
 
 An Attestation does not guarantee future custody.
 The protocol MUST treat backing as a time-dependent property.
 
-## Reference Implementation Requirements
+### Reference Implementation
 
 The reference implementation SHOULD contain:
 
@@ -629,39 +720,9 @@ Redemption: YES
 Verification State: VERIFIED
 ```
 
-## Open Questions
+#### ZK Proofs Roots
 
-### 32.4 Failure consequences
-
-Which failures should:
-
-* disable minting;
-* halt transfers;
-* halt trading;
-* trigger redemption;
-* trigger an emergency procedure?
-
-### 32.8 Recovery
-
-What process returns an Asset from:
-
-```text
-STALE
-```
-
-or:
-
-```text
-UNDERBACKED
-```
-
-to:
-
-```text
-VERIFIED
-```
-
-### Reference Implementation
+"The current Attestation Merkle Root MUST be passed as a public input to the Zero-Knowledge circuit to ensure the smart contract verifies the proof against the correct on-chain state."
 
 SDK must support:
 
@@ -669,6 +730,10 @@ Event Indexing and State Management: The SDK MUST be capable of parsing the regi
 ZK Proof Generation: The SDK MUST implement the required cryptographic circuit to generate the Zero-Knowledge Membership Proof off-chain, using the local tree state and the participant's shielded key.
 Key Management (Dual-Key Support): The SDK MUST securely manage the participant's dual-key setup. It must allow the user to sign proofs using their Shielded Spending Key while providing a mechanism to securely export or share the Viewing Key with authorized third parties.
 Verification Querying: The SDK MUST provide a standardized interface to query the Verification Engine and return a machine-readable compliance status (which you actually already have an example of in the "Verification Interface" section!).
+
+The implementation MUST pass the raw owner_pubkey directly into the leaf hash function without applying any preliminary hash layers. 
+For detailed cryptographic rationale regarding circuit provability and
+proper leaf construction, refer to the EthSystems spec/3
 
 ## Copyright
 
