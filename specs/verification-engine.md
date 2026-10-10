@@ -148,213 +148,190 @@ This mode is RECOMMENDED for `PARTICIPANT` profiles opting for privacy.
 
 #### Attestation Merkle Tree
 
-To support privacy-preserving verification for `PARTICIPANT` profiles,
-the attestation registry SHOULD support an attestation tree.
+To support privacy-preserving verification for `PARTICIPANT` or `ENTITY` profiles,
+the attestation registry MAY support an attestation merkle tree.
 The merkle tree of attestations presented in this standard is adopted from [EthSystem's Attested Shielded Pool](https://github.com/ethsystems/specs/blob/main/specs/3/README.md).
 Although their implementation primarily targets private on-chain payments,
-the underlying zero-knowledge mechanics provides an ideal foundation for the privacy requirements for tokenized ecosystems."
+the underlying zero-knowledge mechanics provide a good foundation for the privacy requirements of this standard.
 
-When an attestation is issued by a profile,
-the registry MUST compute the attestation leaf on-chain rather than accepting a precomputed leaf.
-By enforcing on-chain computation,
-the registry mathematically guarantees that the underlying data strictly adheres to verification engine defined rules.
-The attestation leaf SHOULD bind the following parameters:
+To achieve this privacy,
+a `PARTICIPANT` does not register using a blockchain wallet address.
+Instead, they generate a separate spending public key, `owner_pubkey`, off-chain.
+The spending public key is derived from a newly generated zero-knowledge keypair, 
+which utilizes the Baby Jubjub elliptic curve.
+This is a twisted Edwards elliptic curve designed specifically for ZK-SNARK circuits and
+cryptographic operations, such as EdDSA signatures.
 
-- The participant's shielded spending key (`owner_pubkey`).
-- The attester address.
-- The validity window (issued_at and expires_at).
-- The specific profile attributes (e.g., eligibility, classification, jurisdiction limits) required by the Verification Engine.
+The `PARTICIPANT` MUST provide this `owner_pubkey` to an authorized `ENTITY` off-chain.
+An authorized `ENTITY` is defined as a profile with certain flag privileges.
+More details on this in the `ENTITY` profile section.
+When an authorized entity submits a new attestation to the registry,
+the transaction MUST contain the `owner_pubkey` along with the attestation attributes.
+The smart contract takes the submitted `owner_pubkey`, the `ENTITY`'s address,
+the issued timestamp and the expires timestamp.
+These values are hashed together with a ZK hash function, like Poseidon4.
+This creates an `AttestationLeaf` that is inserted into the registry's attestation Merkle tree.
 
-Upon leaf computation, the registry inserts the leaf into the Merkle tree and
-updates the public Merkle Root.
+The `PARTICIPANT` blockchain wallet is not tied to the `owner_pubkey` on-chain.
+So the `PARTICIPANT` MUST create a proof using the private key corresponding to their `owner_pubkey` for each transaction.
+This will prove the submitted attestation is authorized for the wallet in use.
+The smart contract takes the submitted `owner_pubkey`, the `ENTITY`'s address,
+the issued timestamp and the expires timestamp.
+These values are hashed together with a ZK hash function, like Poseidon4.
+This creates an `AttestationLeaf` that MUST be inserted into the registry's attestation Merkle tree and
+updates the public Merkle Root
+
+Below is the `AttestationLeaf` binds the following parameters:
+
+```
+AttestationLeaf {
+    owner_pubkey: Field    // spending public key of attested party
+    attester:       address  // compliance authority
+    issued_at:      u64
+    expires_at:     u64      // 0 = no expiry
+}
+
+attestation_leaf = Poseidon4(subject_pubkey, attester, issued_at, expires_at)
+```
+
 Consistent with [EthSystem's Attested Shielded Pool](https://github.com/ethsystems/specs/blob/main/specs/3/README.md),
-the registry MUST emit an event carrying the leaf,
-the subject key hash, the attester, and the validity window.
-This allows participants to index the tree off-chain and
-compute the exact Merkle inclusion paths necessary for generating valid Zero-Knowledge (ZK) proofs.
-
-Attestation Leaf Computation 
-When the registry computes the attestation leaf on-chain, it MUST use a ZK-friendly cryptographic hash function (e.g., Poseidon) to ensure efficient proof generation off-chain.
-
-The leaf commitment is defined mathematically as: leaf_commitment = Hash(owner_pubkey, attester, validity_window, profile_attributes_hash, salt)
-
-Where:
-
-owner_pubkey: The participant's shielded spending key.
-attester: The authorized issuer of the attestation.
-validity_window: The concatenated issued_at and expires_at timestamps.
-profile_attributes_hash: A hash of the specific verification attributes (e.g., jurisdiction, eligibility).
-salt: A cryptographically secure random blinding factor provided by the participant to ensure the leaf is perfectly hiding and resistant to brute-force attacks.
-
+the registry MUST emit an event carrying the newly computed leaf,
+the `owner_pubkey`, the `ENTITY` wallet address,
+and the `issued_At` and `expires_at` timestamps.
 
 ### Attestation Framework
 
-The verification engine adopts the proposed attestation schema established by [EthSystem's Attested Shielded Pool](https://github.com/ethsystems/specs/blob/main/specs/3/README.md). 
-Regardless of the profile type (Entity, Participant, or Asset) or
-the privacy mode being used,
-every attestation MUST implement the following attributes:
+While the engine integrates privacy-preserving components adapted from
+[EthSystem's Attested Shielded Pool](https://github.com/ethsystems/specs/blob/main/specs/3/README.md#51-data-structures),
+this framework extends the `AttestationLeaf` data structure to support both transparent and
+shielded configurations for the `Attestation` schema.
+All the parameters from the EthSystems `AttestationLeaf` data structure SHOULD be
+used to generate a unique deterministic `id` for every attestation.
+All parameters from the `AttestationLeaf` data structure SHOULD be used to generate a unique,
+deterministic `id` for every attestation.
 
-1. Subject Identifier: The cryptographic identity of the actor or asset the attestation applies to.
-The format of this identifier depends on the profile:
-- For Entities: A Decentralized Identifier (DID) and/or public on-chain address.
-- For Assets: A unique `assetId` derived from the smart contract and underlying asset.
-- For Participants (Shielded): A cryptographic hash of their Shielded Spending Key (e.g., `owner_pubkey`).
-2. Attester: The on-chain address of the authorized compliance provider, auditor,
-or issuer who verified the off-chain facts and
-cryptographically signed the attestation.
-3. Validity Window: The strictly defined timeframe (issued_at and expires_at) during which the attestation is considered legally or procedurally valid.
-4. Attestation Type: A standardized identifier (e.g., PARTICIPANT_ELIGIBLE, CUSTODY_VERIFIED) defining exactly what claim or rule the attestation is verifying.
-5. Evidence Commitment: A cryptographic hash (evidenceHash) of the underlying off-chain documentation (such as a KYC report or legal contract). This ensures the underlying evidence can be audited off-chain without exposing private data on the public ledger.
-6. Revocation Status: A standardized status indicating if the attestation is active, expired, or explicitly revoked by the Attester (e.g., due to a sanctions match or expired legal agreement).
+For example, the keccak256 algorithm to bind these parameters together:
 
-The Verification Engine extends this structure to support the complex requirements of tokenized real-world assets.
-A claim concerning an off-chain fact MUST identify the entity responsible for establishing that fact.
-The issuer SHOULD NOT be treated as the sole source of evidence for claims where the verification policy requires an independent Attestor.
+> keccak256(abi.encode(subjectIdentifier, attestor, attestedAt, validUntil)).
 
-#### Profile Definitions
+For detailed information on how this deterministic ID is utilized for on-chain lookups, see the [Query & Lookup Interface]() section.
 
-The Verification standard relies on the interplay of these profiles to map critical relationships (e.g., binding an Asset Profile to an Entity Profile to establish the authorized issuer)
 
-Participant Profile:
-The participant uses a Shielded Spending Key to generate ZK proofs.
-The participant also has a Viewing Key.
-If an auditor or regulator needs to see the private participant's identity or transaction history, the participant selectively shares the Viewing Key with them. The auditor can now decrypt and verify the data, but because they don't have the Spending Key, they cannot steal funds or act on the participant's behalf.
-
-#### Attestation Profiles Linking
-
-Every externally sourced verification claim by an attestation profile SHOULD contain a reference to its supporting evidence.
-This MAY be:
-
-* a document hash;
-* a URI;
-* an API response hash;
-* an on-chain record;
-* a signed data object;
-* another content-addressed reference.
-The implementation SHOULD allow a verifier to determine:
-
-#### Attestor Registration
-
-The implementation MUST maintain a registry containing recognized attestors.
-Each attestor record SHOULD include:
-
-```text
-attestor
-attestationTypes
-authorizationStatus
-validFrom
-validUntil
-revoked
-```
-
-The specific mechanism by which an entity becomes an authorized attestor is outside the scope of the base technical specification.
-
-#### Attestation Schema
-
-The Verification Engine MUST define standardized smart contract schemas for each profile and attestation. Every schema MUST include the `VisibilityPreference` flag. 
+Each profile SHOULD structure the attestation format with the following attributes:
 
 ```solidity
 struct Attestation {
     bytes32 id;
-    VisibilityPreference visibility;
-    bytes32 attestationType;
-    bytes resultData; // Flexible ABI-encoded result (e.g., limits, states)
     address attestor;
     uint256 attestedAt;
     uint256 validUntil;
+    
+    bytes32 subjectIdentifier;
+    bytes32 attestationType;
+    VisibilityPreference visibility;
+    bool revoked;
+
     bytes32 evidenceHash;
     string evidenceURI;
-    bytes32 subjectIdentifier;
-    bool revoked;
     bytes signature;
+
+    bytes resultData; // Optional Flexible ABI-encoded result (e.g., limits, states)
+    
 }
 
 ```
+An `Attestation` MUST include the `VisibilityPreference` flag.
+and have a validity period, `validUntil`.
 
-- evidenceHash: he evidenceHash is the Keccak256 hash of the original off-chain PDF or legal document. This proves to the public exactly which document the auditor was looking at, without needing to upload a 50-page PDF to the blockchain.
-- signature: utilize EIP-712 (Typed Data Signatures)
-- string evidenceURI:  It is RECOMMENDED to use [CID, Content Identifiers]() for the `evidenceURI` to ensure decentralized, immutable document retrieval. 
+The `attestationType` is a standardized cryptographic hash representing the specific claim or
+rule being verified, e.g., keccak256("KYC").
+To ensure interoperability, the exact string value 
+and their legal meanings SHOULD be published off-chain by the `attestor`.
+Enities may require excessively long or complex identifier names for `attestationType` .
+So this value SHOULD be hashed,
+rather than stored as a raw string,
+to prevent on-chain state bloat and reduce gas costs.
+This public documentation allows all parties to calculate the correct hash and
+query the attestation registry for the specific attestation they require.
+
+The `subjectIdentifier` value SHOULD be the cryptographic identity of the actor or
+asset the attestation applies to.
+The format of `subjectIdentifier` depends on the targeted profile and/or the visibility flag:
+
+- For `ENTITY`: A Decentralized Identifier (DID),  public on-chain address and/or shielded spending public key (`owner_pubkey`).
+- For `ASSET`: A unique `assetId` derived from the smart contract and underlying asset.
+- For `PARTICIPANT`: The shielded spending public key (`owner_pubkey`) or
+the public wallet address for transparent users.
+
+The `evidenceHash` is a cryptographic hash of the original off-chain evidence artifact.
+This proves to the public exactly which source material the attester is refer to.
+While the `evidenceURI` is the reference link to find this artifact.
+It is RECOMMENDED to use [Content Identifiers, CID](),
+for the `evidenceURI` value to ensure decentralized evidence retrieval. 
 However, standard HTTP/HTTPS string URLs MAY be used,
-as many traditional institutions and tokenized asset issuers currently rely on centralized domain resources rather than decentralized storage networks.
+as many traditional enities currently rely on centralized domain resources.
 
-#### Time-Bounded Verification
+To accommodate additional programmable data,
+an attestation MAY include the `resultData` field.
+While the current `Attestation` attributes represent simple boolean states,
+there will be a need to support specific numerical values or complex data structures.
+When utilized, the `resultData` field SHOULD contain arbitrary ABI-encoded data.
+This allows a unified `Attestation` to flexibly support custom application logic.
 
-An attestation MUST have a validity period.
-An implementation MUST NOT treat an expired attestation as current evidence.
-At minimum:
+The `signature` is a field contains the cryptographic  generated by the `attestor`.
+An implemented framework SHOULD utilize a standardized typed data formatting protocol 
+(e.g., [EIP-712 Typed Data Signatures]() for EVM-compatible networks) to ensure the data is readable by user wallets.
+To ensure cryptographic agility across different blockchain networks,
+implemented attestation frameworks SHOULD use universal signature verification logic.
+This logic MUST support both native cryptographic keypairs (e.g., standard [ECDSA]()) and
+smart contract wallet standards (e.g., [EIP-1271]()).
+Supporting smart contract wallets ensures that entities can seamlessly upgrade to post-quantum signature schemes in the future.
 
-```text
-attestedAt < validUntil
-```
+For information regarding the eventual system-wide deprecation of native elliptic curve cryptography and the transition to quantum-safe environments, see the [Security Considerations]() section.
 
-MUST hold for a valid attestation.
+The `revoke` field indicates the active status of the attestation.
+Upon an `Attestation` submission,
+this value MUST be set to false.
+The state of the `revoke` field MUST be modified only by the `attestor` or
+by a delegate address authorized by the `attestor`.
 
-After:
+### Profile Registration 
 
-```text
-block.timestamp > validUntil
-```
+Before an actor can submit attestations,
+they MUST be a registered a profile within the registry.
+A registration establishes the on-chain identity,
+defines their visibility preferences and the profile type of the actor.
 
-The attestation MUST be considered stale unless replaced or
-renewed according to the verification policy.
-This requirement exists because an attestation represents a statement about an external state at a particular point in time, not an indefinite guarantee.
+While the registry MAY allow permissionless registration, 
+where anyone address can create a profile,
+the profile is dictated by the Asset integrators.
+An `AssetProfile` SHOULD  whitelist which registered Entity Profiles it trusts to act as its authorized Attestors.
 
-#### Attestation History
+#### Attestation Links to Profiles
 
-A compliant implementation SHOULD preserve historical verification information.
-The history SHOULD include:
+To verify the association, the entity profile should create a public signing key. This can be done by using a DID, decentralized identifiers,and verification process.
+Dencentralized identity is a ties an entity to a real world resource. This is neccassary to allow the verifier to know that the entity is established in the real world. 
+Decentralized Identity registration flow in the attestation registry.
+1. Entity creates DID
+2. DID Document contains
+   - DID
+   - verification method
+   - public key
+   - domain service
+3. Entity publishes DID binding on its authoritative domain 
+4. Entity registers DID/domain reference on-chain
+5. Entity signs attestations with the DID verification key
+6. Verifier receives attestation
 
-* previous Attestations;
-* Attestation revocations;
-* backing quantities;
-* token supply;
-* verification-state changes;
-* issuer changes;
-* custodian changes;
-* rights changes;
-* contract upgrades;
-* pauses;
-* corporate actions.
-
-Historical records SHOULD be append-only. 
-This allows a verifier to reconstruct the verification state of an asset profile, entity profile or participant profile at a previous point in time.
-
-An issuer can use the entity profile.
-This SHOULD identify the entity responsible for issuing or sponsoring the Tokenized Asset.
-This should be represented by an address that is also confirm on a public domain owned/affiliate of issuing/custodain entity. 
-Where the underlying issuer's authorization is required, the implementation MUST provide a mechanism to record:
-Mechanism for unauthorized tokenization include tokens minted with out the proper attestation commited on-chain.
-
-#### Attestation Revocation
-
-Attestors MUST have a mechanism to revoke an Attestation where the asserted fact is no longer valid or the Attestor determines that the Attestation should no longer be relied upon.
-A revoked Attestation MUST NOT satisfy a verification requirement.
-This is done by an entity profile attestation.
-Revocation SHOULD record:
-
-```text
-attestationId
-revokedAt
-revocationReason
-revokedBy
-```
-
-The revocation reason MAY be privacy-preserving or represented by a standardized reason code.
-Attestors MUST have a mechanism to revoke an Attestation when the asserted fact is no longer valid (e.g., due to a sanctions match, KYC expiration, or regulatory direction) or the Attestor determines the Attestation should no longer be relied upon. A revoked Attestation MUST NOT satisfy a verification requirement.
-
-The authorized Attester MUST compute the Merkle path for the target attestation leaf.
-The Attester MUST call the registry to explicitly revoke the leaf using this path.
-The registry MUST update its state to nullify the leaf and emit a revocation event.
-Once a leaf is revoked, any Zero-Knowledge Membership Proof attempting to reference that leaf MUST fail verification.
-
-The revocation reason MAY be privacy-preserving or represented by a standardized reason code.
+The implementation SHOULD allow a verifier to determine:
 
 ### Entity Profile
 
 ```solidity
 
 struct EntityProfile {
-    bytes32 did; // Decentralized Identifier
+    address entity;
+    bytes32 did; // Optional Decentralized Identifier
     VisibilityPreference visibility;
     address authorizedKey;
     bytes32 legalDocumentHash;
@@ -364,29 +341,37 @@ struct EntityProfile {
 
 ####  Rights Profile interface
 
-The implementation SHOULD expose the real world rights associated with the Tokenized Asset ownership. At minimum, the rights profile SHOULD identify:
+The implementation SHOULD expose the real world rights associated with the Tokenized Asset ownership. Examples of potential rights attributes MAY clarify:
 
-```text
-votingRights
-dividendRights
-redemptionRights
-corporateActionRights
-ownershipRights
-economicExposure
+```solidity
+
+bool votingRights; // The token holder has voting rights.
+bool dividendRights; // The token may/may not entitled to dividends.
+bool redemptionRights; //
+bool corporateActionRights; //
+bool ownershipRights; //
+bool economicExposure; //
 ```
 
-A right that does not exist MUST NOT be represented as available.
-
 Changes to token-holder rights MUST be recorded.
-An implementation MUST NOT silently change:
-without creating an auditable state transition.
 The verification interface MUST expose the current rights and SHOULD expose historical rights.
+All right SHOULD be accompanied by attestations.
 
 #### Entity Legal Actions
 
 The implementation SHOULD expose the relevant parties and
 legal structure through attestations, 
 so that users can understand where claims ultimately reside.
+
+A tokenized asset is rarely supported by a single entity.
+Its operational architecture relies on a network of specialized third parties (e.g., Custodians, Transfer Agents, Legal Counsel).
+Therefore, implementations of the verification framework SHOULD NOT rely on a single `Entity` profile submiting the `Attestation`s for an `Asset` profile.
+Instead, SHOULD utilize a mosaic of distinct `Attestation`s to reconstruct the off-chain operational
+and legal structure on-chain.
+By mapping specific schema claims (such as backing reserves or voting rights)
+directly to the independent parties (`Entity` profiles) responsible for them,
+the verification framework ensures that users can accurately trace the origin of every claim and
+isolate specific counterparty risks.
 
 #### Cryptographic Proof of Audit (Auditor Authorization)
 
@@ -405,22 +390,6 @@ function submitAuditorAttestation(
 ) external;
 ```
 The smart contract MUST verify the `zkProofOfAudit` against the public Merkle Root before accepting the Auditor's submission, guaranteeing on-chain that the `ENTITY` was authorized without exposing the Viewing Key.
-
-#### Entity Profile Decentralized Identity
-
-To verify the association, the entity profile should create a public signing key. This can be done by using a DID, decentralized identifiers,and verification process.
-Dencentralized identity is a ties an entity to a real world resource. This is neccassary to allow the verifier to know that the entity is established in the real world. 
-Decentralized Identity registration flow in the attestation registry.
-1. Entity creates DID
-2. DID Document contains
-   - DID
-   - verification method
-   - public key
-   - domain service
-3. Entity publishes DID binding on its authoritative domain 
-4. Entity registers DID/domain reference on-chain
-5. Entity signs attestations with the DID verification key
-6. Verifier receives attestation
 
 ### Asset Profile
 
@@ -494,7 +463,7 @@ Example:
 The address able to  create tokens, mint, or 
 destory tokens, burning, MUST be publicly defined.
 Minting SHOULD NOT increase token supply beyond the quantity permitted by the attestation supporting the corresponding increase in backing.
- profile that is assigned to minting and burn tasks.
+profile that is assigned to minting and burn tasks.
 A mint operation SHOULD reference the Attestation supporting the corresponding increase in backing.
 
 Burning SHOULD NOT decrease token supply.
@@ -508,7 +477,6 @@ An implementation MAY represent eligibility through an on-chain attestation or z
 A participant's eligibility status MUST NOT expose unnecessary underlying identity information.
 Participants MAY choose their `VisibilityPreference` (Transparent or Shielded) depending on their operational privacy requirements.
 
-#### Format
 
 ```solidity
 struct ParticipantProfile {
@@ -594,7 +562,7 @@ REVOKED
 ```
 
 
-#### Interface Format
+#### Query Interface
 
 A compliant implementation MUST expose a machine-readable verification interface for each profile.
 The interface MUST allow any party to verify the following:
@@ -656,6 +624,16 @@ Implementations SHOULD use short, policy-defined validity periods for high-risk 
 
 An Attestation does not guarantee future custody.
 The protocol MUST treat backing as a time-dependent property.
+
+#### Cryptographic Agility and ECDSA Deprecation
+While the standard currently supports standard ECDSA signatures (via EIP-712) for immediate compatibility with existing Externally Owned Accounts (EOAs), the underlying mathematics of ECDSA are vulnerable to future quantum computing threats. To ensure long-term security, the standard relies on EIP-1271 (isValidSignature) to allow entities to utilize upgradeable Smart Contract Wallets.
+
+However, relying entirely on individual entities to proactively rotate their keys is inefficient. The standard acknowledges that the broader Ethereum network will eventually transition to post-quantum cryptography (e.g., via Account Abstraction and EIP-7702). When this industry-wide transition occurs, implementations of the Verification Engine SHOULD support a Cryptographic Deprecation Phase.
+
+During this phase:
+
+Grandfathered Signatures: All attestations signed and recorded prior to the deprecation timestamp remain fully valid.
+Deprecation of ECDSA: Any new attestations submitted using native ECDSA signatures after the deprecation timestamp SHOULD be flagged as "low credibility" or outright rejected by the engine, forcing entities to utilize EIP-1271 quantum-safe smart wallets for all future claims.
 
 ### Reference Implementation
 
@@ -738,3 +716,12 @@ proper leaf construction, refer to the EthSystems spec/3
 ## Copyright
 
 ## References
+
+#### Cryptographic Agility and ECDSA Deprecation
+While the standard currently supports standard ECDSA signatures (via EIP-712) for immediate compatibility with existing Externally Owned Accounts (EOAs), the underlying mathematics of ECDSA are vulnerable to future quantum computing threats. To ensure long-term security, the standard relies on EIP-1271 (`isValidSignature`) to allow entities to utilize upgradeable Smart Contract Wallets.
+
+However, relying entirely on individual entities to proactively rotate their keys is inefficient. The standard acknowledges that the broader Ethereum network will eventually transition to post-quantum cryptography (e.g., via Account Abstraction and EIP-7702). When this industry-wide transition occurs, implementations of the Verification Engine SHOULD support a **Cryptographic Deprecation Phase**. 
+
+During this phase:
+*   **Grandfathered Signatures:** All attestations signed and recorded prior to the deprecation timestamp remain fully valid.
+*   **Deprecation of ECDSA:** Any *new* attestations submitted using native ECDSA signatures after the deprecation timestamp SHOULD be flagged as "low credibility" or outright rejected by the engine, forcing entities to utilize EIP-1271 quantum-safe smart wallets for all future claims.
