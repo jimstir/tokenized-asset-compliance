@@ -411,26 +411,45 @@ authority, and provenance of every claim.
 While a `PARTICIPANT` spending key can safely sit in public storage as the `subjectIdentifier` without revealing their identity,
 the compliance data remain strictly private.
 
-When an authorized `ENTITY` needs to issue an attestation regarding a SHIELDED participant,
+When an authorized `ENTITY` needs to issue an attestation regarding a SHIELDED `PARTICIPANT`,
 the smart contract MUST cryptographically verify that the `ENTITY` was authorized by the `PARTICIPANT` to inspect their private records.
 This prevents unauthorized third parties from attaching unapproved claims to a participant's spending key without their consent.
 
-To satisfy this requirement:
+To issue an `Attestation` for a shielded `PARTICIPANT`,
+an `ENTITY` MUST submit the cryptographic authorization proof alongside the standard attestation parameters in transaction calldata.
+The registry acts as the entry gatekeeper,
+evaluating the proof against a ZK verifier before updating state.
 
-1. Off-Chain Authorization: The `PARTICIPANT` securely shares their viewing key (or a cryptographically signed consent payload) with the authorized `ENTITY` off-chain.
-2. Proof Generation: The `ENTITY` generates a Proof of Audit. This cryptographic proof mathematically proves that the entity possesses the valid Viewing Key corresponding to the target owner_pubkey.
-3. On-Chain Submission: The registry MUST expose an interface for the ENTITY to submit the new attestation alongside this proof:
+The `PARTICIPANT` securely shares their viewing key (or a cryptographically signed consent payload) with the authorized `ENTITY` off-chain.
+Then the `ENTITY` generates the proof of audit off-chain and
+submits the shieldedAttestation with the following attributes:
 
-```solidity
-function submitProofofAudit(
-    bytes32 subjectIdentifier, // The participant's owner_pubkey
-    bytes32 newAttestationType,
-    bytes memory newResultData,
-    bytes calldata zkProofOfAudit
-) external;
+``` solidity
+
+function submitShieldedAttestation(
+    uint256 ownerPubkey,
+    bytes32 attestationType,
+    uint64 validUntil,
+    bytes calldata proofOfAudit
+) external returns (bytes32 leaf);
+
 ```
-The smart contract MUST verify the `zkProofOfAudit` against the `owner_pubkey` before recording the attestation,
-guaranteeing that the entity had authority to audit the `PARTICIPANT` without exposing the viewing key on-chain.
+Upon invocation, the contract MUST execute the following sequence:
+
+1. The contract MUST bind the `ENTITY` address and
+the target `ownerPubkey` as public inputs to the submitted `proofOfAudit` payload.
+This binds the proof directly to the calling `ENTITY`,
+preventing proof front-running or transaction replaying by unauthorized actors.
+2. The contract evaluates the proof against the bound parameters. The check evaluates to false and the transaction MUST revert if:
+
+- The cryptographic proof is mathematically invalid or corrupted.
+- The proof does not match the target `owner_pubkey`.
+- This `ENTITY` does not match the attestor address authorized in the proof.
+
+If the proof evaluates to true, the contract computes the attestation leaf and inserts it into the registry's Attestation Merkle Tree following the exact procedure established in the [Attestation Merkle Tree]() section.
+
+The `proofOfAudit` parameter MUST NOT be persisted to contract storage (sstore). 
+The proof is consumed strictly from transaction calldata during execution to prevent state bloat.
 
 ### Asset Profile
 
@@ -480,79 +499,71 @@ In other words, this address does not need to be the owner of the token contract
 only a publicly idenitifing party.
 
 The core three rights defined in the metadata SHOULD be the value of `attestationId`.
-This is RECOMMENDED to discourage an issuer/owner from declaring flase rights claims about the asset on-chain,
-while the off-chain legal structure is the opposite.
+This is RECOMMENDED to discourage an `ENTITY` from declaring false rights claims about an `ASSET`,
+while the off-chain legal structure is different.
 More information about attestation values are described in the [Attestation Framework]().
 
-- If the company that created the token goes out of business, your underlying asset is safe in a separate vault and belongs to you, not their creditors.
-- Whoever holds the token in their crypto wallet is the legal owner of the asset. The blockchain is the final source of truth, rather than a traditional transfer agent's private database.
+The `ENTITY` is RECOMMENDED to define an `underlyingAssetIdentifier` for the underlying asset.
+This identifier SHOULD NOT rely exclusively on token symbol, token name,
+blockchain address, or issuer selected ticker.
+For example, two unrelated tokens SHOULD NOT be considered equivalent since both use the symbol `NVDA`.
 
-The issuer SHOULD define an `underlyingAssetIdentifier` for the underlying asset.
-The identifier SHOULD NOT rely exclusively on token symbol, token name,
-blockchain address, or issuer-selected ticker.
-For example, two unrelated tokens MUST NOT be considered equivalent merely because both use the symbol `NVDA`.
+#### Extension Metadata Modules
 
-extensionMetadata: votingRights, dividendRights
-ISSUER_NOTICE_PROVIDED : an auditor must submit an attestation proving that the written notice was sent to the underlying stock issuer(if the issuer is registered in the registry, than they can be the auditor).
+Different tokenized products have specialized operational requirements that cannot be captured in a static baseline schema.
+To maintain extensibility, the `extensionMetadata` array stores the contract addresses of modular extension adapters.
+Each address in `extensionMetadata` SHOULD point to an external contract or
+extensions implementing interfaces for specialized tokenized products.
 
-#### Representation Ratio
-
-The implementation SHOULD specify the relationship between token units and underlying units.
-Example:
-
-```text
-1 token = 1 underlying share
-```
 #### Minting and Burning
 
-The address able to  create tokens, mint, or 
-destory tokens, burning, MUST be publicly defined.
-Minting SHOULD NOT increase token supply beyond the quantity permitted by the attestation supporting the corresponding increase in backing.
-profile that is assigned to minting and burn tasks.
-A mint operation SHOULD reference the Attestation supporting the corresponding increase in backing.
+TThe addresses authorized to execute mint (create) or
+burn (destroy) operations on the token contract MUST be publicly defined in the `ASSET` profile.
+A mint operation SHOULD NOT increase the total token supply beyond the verified quantity permitted by active `Attestation`.
+Each mint operation SHOULD reference the specific `Attestation`,
+confirming the corresponding deposit and custody of the underlying collateral.
 
-Burning SHOULD NOT decrease token supply.
-Entity attestation are responsible for  SHOULD record the relationship between the token burn and the corresponding change in the underlying custody position where that information is available.
+A token burn operation decreases the on-chain token supply (typically upon asset redemption).
+The responsible `ENTITY` SHOULD publish an `Attestation` linking the on-chain token burn to the corresponding settlement,
+withdrawal, or reduction in the underlying supply.
 
 ### Participant Profile 
 
-A `PARTICIPANT` profiles represents the actor thatplans on holding the tokenized token.
-To provide a standardized, privacy-preserving method for on-chain identity verification,
-a `PARTICIPANT` SHOULD be registered in the registry.
-
-#### Eligibility & Classification
-
-An implementation MAY represent eligibility through an on-chain attestation or zero-knowledge proof.
-A participant's eligibility status MUST NOT expose unnecessary underlying identity information.
-Participants MAY choose their `VisibilityPreference` (Transparent or Shielded) depending on their operational privacy requirements.
-
+A `PARTICIPANT` profiles represents the actor planning to on hold the corresoponding `ASSET`.
+A `PARTICIPANT` SHOULD register to the registry with the following attributes:
 
 ```solidity
 struct PARTICIPANT {
-    address wallet;
+    address user;
     uint256 participantType;
-    bytes32 shieldedKeyHash; // For SHIELDED profiles, this is the commitment
+    bytes32 shieldedKeyHash; // Optional, or shielded profiles
     VisibilityPreference visibility;
     bytes32 jurisdiction;
-    // Attestations alreay made in the registry by other profiles
+    // Attestations alreay made in the registry by other profiles about this profile
     bytes32[] identityAttestationIds;
 }
 ```
 
-#### Asset Restrictions
+An implementation MAY represent eligibility through an on-chain attestation or zero-knowledge proof.
+A `PARTICIPANT` eligibility status SHOULD NOT expose identity information.
+A `PARTICIPANT` MAY choose their `VisibilityPreference` 
+(transparent or shielded) depending on their prefered privacy requirements.
 
-For `PARTICIPANT` that have been rewarded retrictions about a specific `ASSET` or
-the use a specific `ENTITY` registered offerings,
-the registry SHOULD be updated.
+#### Restrictions
 
-If the participant opts for a SHIELDED visibility preference, the transfer restriction check MUST be validated via a Zero-Knowledge Proof (ZKP) confirming eligibility without exposing the underlying jurisdiction or identity.
+When a `PARTICIPANT` compliance status changes,
+the issuing `ENTITY` MUST update the registry by revoking the `PARTICIPANT`'s eligibility thorugh an `Attestation`. For a shielded `PARTICIPANT`,
+revoking the attestation leaf ensures subsequent zero-knowledge eligibility proofs evaluate to false.
 
 ### Verification State & Discovery
 
-The verification interface allows the verifier to collect all relevant information can calculate a the current state of a tokenized asset.
-The following are the RECOMMENDED states based on public values defined in 
-Every registered Tokenized Asset MUST have a current Verification State.
-The base states are:
+The verification interface allows verifiers to query all active `Attestation`s linked to a profile.
+A profile's current status is represented by its `VerificationState`.
+Depending on the targeted profile,
+supplementary evidence or
+renewed `Attestation` records MAY be required to satisfy the verification state.
+The `UNVERIFIED`, `VERIFIED` SHOULD NOT require an `Attestation` to be 
+The following are the RECOMMENDED states:
 
 ```solidity
 enum VerificationState {
@@ -564,11 +575,10 @@ enum VerificationState {
 }
 ```
 
-- `VERIFIED`: All REQUIRED defined attributes for the RECOMMENDED profiles are defined. evidence is valid.
-The asset satisfies the all defined attributes of the verification policy.
+- `VERIFIED`: All REQUIRED defined attributes for the RECOMMENDED profiles are defined. evidence is valid. The asset satisfies the all defined attributes of the verification policy.
 Enforcement: Normal protocol operations MAY continue.
 
-- `UNVERIFIED`: The REQUIRED defined attributes for the RECOMMENDED profiles are not all defined.
+- `UNVERIFIED`: The profile is registered, but not `VERIFIED`. The REQUIRED defined attributes for the profile are not all defined.
 For example, no attestations, unregistered attestor, and so on.
 Enforcement: The asset MUST be  flagged as `UNVERIFIED`.
 
@@ -698,81 +708,84 @@ The verifier MUST accept proofs generated against any root within this authorize
 
 ### Reference Implementation
 
-The reference implementation SHOULD contain:
+A compliant reference implementation SHOULD provide reference smart contracts, a test suite, a client SDK, and an end-to-end integration example.
 
 ```text
 contracts/
-    AssetRegistry.sol
-    AttestorRegistry.sol
-    AttestationRegistry.sol
-    VerificationEngine.sol
-    TokenizedAsset.sol
-    ComplianceStateMachine.sol
+    ProfileRegistry.sol         // Manages ENTITY, ASSET, and PARTICIPANT profile records
+    AttestationRegistry.sol     // Manages transparent attestations and tagging maps
+    AttestationMerkleTree.sol   // Implements Poseidon4 incremental tree & historical root buffer
+    ZKVerifier.sol              // Verifies Proof of Audit and participant membership proofs
+    VerificationEngine.sol      // Evaluates attestations and calculates VerificationState
 
 test/
     attestation/
-    backing/
+    profiles/
     reconciliation/
-    expiration/
+    merkle-tree/
+    expiration-stale/
     revocation/
-    corporate-actions/
+    proof-of-audit/
     adversarial/
 
 sdk/
+    indexer/
+    prover/
     verifier/
 
 examples/
-    nvda/
+    nvda-equity/
 ```
 
-The reference implementation SHOULD provide a command or API that allows a user to obtain a complete verification result for an Asset.
+#### Verification CLI Output Example
 
-Example:
+The reference implementation SHOULD provide a command-line tool or API enabling verifiers to retrieve the complete verification state of an asset:
 
 ```text
-$ npm run verify -- NVDA
+$ npx tavs verify --asset 0x4a7b...
 ```
 
 Expected output:
 
 ```text
-TOKENIZED ASSET VERIFICATION
+===================================================
+           TOKENIZED ASSET VERIFICATION
+===================================================
+Asset Name:         NVIDIA Corporation (Tokenized)
+Asset ID:           0x4a7b9c...
+Token Contract:     0x1234567890abcdef...
+Chain ID:           1 (Ethereum Mainnet)
 
-Asset: NVIDIA Corporation
-Identifier: XXXXX
+Issuer Entity:      0xEntity123... (DID: did:web:issuer.com)
+Representation:     1:1
+Token Supply:       1,000,000
+Verified Custody:   1,000,000 NVDA Shares
+Custody Attestor:   0xAuditor456... (DID: did:web:custodian.com)
 
-Token: 0x123...
+Attested Timestamp: 2026-10-01 12:00:00 UTC
+Valid Until:        2026-11-01 12:00:00 UTC (Active)
 
-Representation: 1:1
-Token Supply: 1,000,000
+--- Core Tokenholder Rights ---
+Redemption Rights:      YES (Attestation: 0xaa11...)
+Insolvency Protection:  YES (Attestation: 0xbb22...)
+Native Legal Ownership: YES (Attestation: 0xcc33...)
 
-Verified Backing: 1,000,000
-Attestor: Authorized Custodian X
-
-Attested: 2026-09-23
-Valid Until: 2026-09-24
-
-Voting Rights: YES
-Dividend Rights: YES
-Redemption: YES
-
-Verification State: VERIFIED
+===================================================
+VERIFICATION STATE: VERIFIED
+===================================================
 ```
 
-#### ZK Proofs Roots
+#### Client SDK Requirements
 
-"The current Attestation Merkle Root MUST be passed as a public input to the Zero-Knowledge circuit to ensure the smart contract verifies the proof against the correct on-chain state."
+The reference SDK MUST support off-chain indexing, cryptographic proof generation, and verification queries:
 
-SDK must support:
+1. **Event Indexing & Tree Reconstruction:** The SDK MUST parse emitted registry events, reconstruct the incremental Attestation Merkle Tree locally, and track the active Merkle Root.
+2. **ZK Proof Generation:** The SDK MUST implement the off-chain cryptographic circuits required to generate Zero-Knowledge Membership Proofs for shielded participants, passing the target on-chain Attestation Merkle Root as a public input.
+3. **Dual-Key Management:** The SDK MUST securely manage the participant's dual-key architecture. It MUST allow participants to sign proofs using their Shielded Spending Key while providing utilities to securely export and share the Viewing Key with authorized `ENTITY` auditors.
+4. **Verification Interface Client:** The SDK MUST provide standardized methods to query the on-chain Verification Engine and return machine-readable compliance results.
 
-Event Indexing and State Management: The SDK MUST be capable of parsing the registry's emitted events, reconstructing the Attestation Merkle Tree locally, and maintaining the current Merkle Root.
-ZK Proof Generation: The SDK MUST implement the required cryptographic circuit to generate the Zero-Knowledge Membership Proof off-chain, using the local tree state and the participant's shielded key.
-Key Management (Dual-Key Support): The SDK MUST securely manage the participant's dual-key setup. It must allow the user to sign proofs using their Shielded Spending Key while providing a mechanism to securely export or share the Viewing Key with authorized third parties.
-Verification Querying: The SDK MUST provide a standardized interface to query the Verification Engine and return a machine-readable compliance status (which you actually already have an example of in the "Verification Interface" section!).
-
-The implementation MUST pass the raw owner_pubkey directly into the leaf hash function without applying any preliminary hash layers. 
-For detailed cryptographic rationale regarding circuit provability and
-proper leaf construction, refer to the EthSystems spec/3
+**Cryptographic Leaf Construction Rule:**  
+When constructing leaves for shielded participants, the SDK and smart contracts MUST pass the raw `owner_pubkey` directly into the `Poseidon4` hash function without applying preliminary hash layers, preserving circuit provability as defined in [EthSystems Spec 3](https://github.com/ethsystems/specs/blob/main/specs/3/README.md).
 
 ## Copyright
 
