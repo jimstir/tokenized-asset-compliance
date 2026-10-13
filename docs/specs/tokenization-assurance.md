@@ -720,88 +720,9 @@ consistent with the root-history pattern established in
 
 The verifier must accept proofs generated against any root within this authorized historical window, (e.g., the last 50 to 100 valid roots).
 
-### Reference Implementation
-
-The reference implementation provides reference smart contracts, a test suite, a client SDK, and an end-to-end integration example.
-
-```text
-contracts/
-    ProfileRegistry.sol         // Manages ENTITY, ASSET, and PARTICIPANT profile records
-    AttestationRegistry.sol     // Manages transparent attestations and tagging maps
-    AttestationMerkleTree.sol   // Implements Poseidon4 incremental tree & historical root buffer
-    ZKVerifier.sol              // Verifies Proof of Audit and participant membership proofs
-    VerificationEngine.sol      // Evaluates attestations and calculates VerificationState
-
-test/
-    attestation/
-    profiles/
-    reconciliation/
-    merkle-tree/
-    expiration-stale/
-    revocation/
-    proof-of-audit/
-    adversarial/
-
-sdk/
-    indexer/
-    prover/
-    verifier/
-
-examples/
-    nvda-equity/
-```
-
-#### Verification CLI Output Example
-
-The reference implementation provides a command-line tool or API enabling verifiers to retrieve the complete verification state of an asset:
-
-```text
-$ npx tavs verify --asset 0x4a7b...
-```
-
-Expected output:
-
-```text
-===================================================
-           TOKENIZED ASSET VERIFICATION
-===================================================
-Asset Name:         NVIDIA Corporation (Tokenized)
-Asset ID:           0x4a7b9c...
-Token Contract:     0x1234567890abcdef...
-Chain ID:           1 (Ethereum Mainnet)
-
-Issuer Entity:      0xEntity123... (DID: did:web:issuer.com)
-Representation:     1:1
-Token Supply:       1,000,000
-Verified Custody:   1,000,000 NVDA Shares
-Custody Attestor:   0xAuditor456... (DID: did:web:custodian.com)
-
-Attested Timestamp: 2026-10-01 12:00:00 UTC
-Valid Until:        2026-11-01 12:00:00 UTC (Active)
-
---- Core Tokenholder Rights ---
-Redemption Rights:      YES (Attestation: 0xaa11...)
-Insolvency Protection:  YES (Attestation: 0xbb22...)
-Native Legal Ownership: YES (Attestation: 0xcc33...)
-
-===================================================
-VERIFICATION STATE: VERIFIED
-===================================================
-```
-
-#### Client SDK Requirements
-
-The reference SDK MUST support off-chain indexing, cryptographic proof generation, and verification queries:
-
-1. **Event Indexing & Tree Reconstruction:** The SDK MUST parse emitted registry events, reconstruct the incremental Attestation Merkle Tree locally, and track the active Merkle Root.
-2. **ZK Proof Generation:** The SDK MUST implement the off-chain cryptographic circuits required to generate Zero-Knowledge Membership Proofs for shielded participants, passing the target on-chain Attestation Merkle Root as a public input.
-3. **Dual-Key Management:** The SDK MUST securely manage the participant's dual-key architecture. It MUST allow participants to sign proofs using their Shielded Spending Key while providing utilities to securely export and share the Viewing Key with authorized `ENTITY` auditors.
-4. **Verification Interface Client:** The SDK MUST provide standardized methods to query the on-chain Verification Engine and return machine-readable compliance results.
-
-**Cryptographic Leaf Construction Rule:**  
-When constructing leaves for shielded participants, the SDK and smart contracts MUST pass the raw `owner_pubkey` directly into the `Poseidon4` hash function without applying preliminary hash layers, preserving circuit provability as defined in [EthSystems Spec 3](https://github.com/ethsystems/specs/blob/main/specs/3/README.md).
-
 ## Copyright
+
+Copyright and related rights waived via [CC0](https://creativecommons.org/publicdomain/zero/1.0/).
 
 ## References
 

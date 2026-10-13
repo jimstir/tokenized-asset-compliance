@@ -1,0 +1,38 @@
+{
+  "name": "tokenization-assurance-framework-reference",
+  "version": "1.0.0",
+  "description": "Reference Implementation of the Tokenization Assurance Framework (TAF)",
+  "scripts": {
+    "node": "hardhat node",
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "seed:nvda": "hardhat run scripts/seed-nvda-example.ts --network localhost",
+    "taf": "HARDHAT_NETWORK=localhost ts-node scripts/cli.ts"
+  },
+  "keywords": [
+    "taf",
+    "tokenization",
+    "rwa",
+    "compliance",
+    "zero-knowledge",
+    "attestation"
+  ],
+  "author": "Jimmy Debe",
+  "license": "CC0-1.0",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
+    "@nomicfoundation/hardhat-ethers": "^3.0.0",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@openzeppelin/contracts": "^5.0.0",
+    "@types/chai": "^4.3.0",
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^20.0.0",
+    "chai": "^4.3.7",
+    "ethers": "^6.10.0",
+    "hardhat": "^2.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
