@@ -1,6 +1,6 @@
 ---
-title: TOKENIZATION-VERIFICATION
-name: Tokenization Verification Standard
+title: TOKENIZATION-ASSURANCE
+name: Tokenization Assurance Framework
 status: draft
 category: Best Current Practice
 contributors: Jimmy Debe <@jimstir>
@@ -9,9 +9,17 @@ contributors: Jimmy Debe <@jimstir>
 
 ## Abstract
 
-This document defines a standardized framework for representing, verifying, and enforcing claims associated with tokenized securities and other tokenized real-world assets on-chain.
+This document defines a standardized framework for representing, verifying,
+and enforcing claims associated with tokenized products.
 
-The standard focuses more on the consumers of tokenized products. There is a need to have a universal standard for verifying the information accoicated with the different parts of these products. Issuers may be providing publicly available information but each product has different processes, custodians, brokers, transfer agents, tokenization formats with off-chain claims, or other trusted entities. These should to be identified and veified on-chain for independent auditing.
+The Tokenization Assurance Framework (TAF)
+establishes a consumer-first trust layer across the tokenization lifecycle.
+While issuers frequently publish off-chain legal disclosures,
+the tokenization market remains fragmented across different operational models, custodians,
+broker-dealers, and the underlying legal structures.
+TAF aims to bridge the divide between smart contracts and
+the off-chain reality of these products by establishing a universal on-chain assurance architecture.
+
 
 ## Motivation
 
@@ -559,10 +567,16 @@ revoking the attestation leaf ensures subsequent zero-knowledge eligibility proo
 
 The verification interface allows verifiers to query all active `Attestation`s linked to a profile.
 A profile's current status is represented by its `VerificationState`.
-Depending on the targeted profile,
+Based on the targeted profile,
 supplementary evidence or
-renewed `Attestation` records MAY be required to satisfy the verification state.
-The `UNVERIFIED`, `VERIFIED` SHOULD NOT require an `Attestation` to be 
+renewed `Attestation` records MAY be required to satisfy the verification policy and
+achieve a `VERIFIED` state.
+Each tokenized product MUST define the required `Attestation` attributes required for its profile to achieve a `VERIFIED` state.
+States such as `VERIFIED`, `UNVERIFIED`, and
+`REVOKED` SHOULD be determined by on-chain state changes.
+The `STALE` state is dynamically derived at query time and
+MAY NOT require an on-chain state change.
+
 The following are the RECOMMENDED states:
 
 ```solidity
@@ -570,69 +584,53 @@ enum VerificationState {
     UNVERIFIED,
     VERIFIED,
     STALE,
-    UNDERBACKED,
     REVOKED,
 }
 ```
 
-- `VERIFIED`: All REQUIRED defined attributes for the RECOMMENDED profiles are defined. evidence is valid. The asset satisfies the all defined attributes of the verification policy.
+- `VERIFIED`: All required profile attributes are established, supporting `Attestation` remain valid, and the profile satisfies the requirements of the verification policy.
 Enforcement: Normal protocol operations MAY continue.
 
-- `UNVERIFIED`: The profile is registered, but not `VERIFIED`. The REQUIRED defined attributes for the profile are not all defined.
-For example, no attestations, unregistered attestor, and so on.
+- `UNVERIFIED`: The profile is registered, but not `VERIFIED`. The required attributes for the profile are incomplete, such as lacking attestations.
 Enforcement: The asset MUST be  flagged as `UNVERIFIED`.
 
 - `STALE` : A `VERIFIED` asset profile no longer meets the validity period.
-Enforcement: New minting SHOULD be disabled, unless separate defined policy explicitly permits otherwise. This disabled SHOULD be an on-chain flag. The STALE state SHOULD be evaluated dynamically at query time rather than requiring an explicit on-chain state transition transaction. If an asset holds a stored state of VERIFIED, but the underlying attestation's validity window has lapsed (block.timestamp > validUntil), the verification interface MUST dynamically evaluate and return STALE.
+Enforcement: New minting SHOULD be disabled, unless separate defined policy explicitly permits otherwise. This restriction SHOULD be reflected via an on-chain flag. The `STALE` state SHOULD be evaluated dynamically at query time rather than a required on-chain state change. If a profile holds a stored state of `VERIFIED`, but the underlying `Attestation` validity window has lapsed, the verification interface SHOULD return `STALE`.
 
-- `UNDERBACKED`: The verified quantity of underlying assets is less than the required token supply.
-This flag MUST be attached with an attestation profile.
-Enforcement: New issuance SHOULD be disabled.
-
-- `REVOKED`: An authorized entity profile submits an revocation attestation.
-SHOULD be a valid revoke and not a reserved/overturn revoke.
-Enforcement: New issuance SHOULD be disabled. Token transfers SHOULD be halted.
+- `REVOKED`: An authorized entity profile submits an revocation `Attestation`. It SHOULD be an active revocation that has not been overturned.
+Enforcement: New issuance SHOULD be disabled. Token transfers SHOULD be halted. Only an authorized attestor who issued the `Attestation` MUST possess the permission to flag the profile's `VerificationState` to `REVOKED`.
 
 #### State Transitions
 
-The implementation MUST define deterministic transitions between verification states.
+ Below plots the deterministic transitions between verification states.
 
 Example:
 
 ```text
                     valid attestation
-               ┌──────────────────────┐
-               │                      ▼
-        UNVERIFIED ─────────────── VERIFIED
-             ▲                         │
-             │                         │ expires
-             │                         ▼
-             │                       STALE
-             │                         │
-             │                         │ renewed
-             └─────────────────────────┘
-
-VERIFIED
-   │
-   │ backing < supply attestation
-   ▼
-UNDERBACKED
-
-VERIFIED
-   │
-   │ revoke attestation
-   ▼
-REVOKED
+           ┌──────────────────────────────────────────────┐
+           │                                              ▼
+      UNVERIFIED ◄──────────────────────────────────── VERIFIED ◄───────┐
+           │          policy fails                        │   ▲         │
+           │                                      expires │   │ renewed │
+           │                                              ▼   │         │
+           │                                            STALE ┘         │
+           │                                              │             │
+           │              revoke attestation              │             │
+           └──────────────────────┬───────────────────────┘             │
+                                  ▼                                     │
+                               REVOKED ─────────────────────────────────┘
+                                        reinstated
 
 ```
 
 #### Attestation Discovery
 
-Attestion tagging
-An `Attestation` SHOULD NOT exist in isolation in a profile by its `attestationId`.
-Different partie may not know the unique `attestationId` for each profile in advance,
-the registry MUST generate tagging maps at time of submission.
-The tagging record MAY consist of three attributes from the `Attestation`;
+`Attestation` tagging is necessary to provide predictable query endpoints for external smart contracts.
+An `Attestation` SHOULD NOT be stored solely by its primary `attestationId`.
+Querying parties may not know the exact identifier in advance,
+the registry MUST generate relational tagging maps upon submission.
+It is RECOMMENDED that the tagging record consist of three attributes from the `Attestation`;
 `subjectIdentifier`, `attestor` and `attestationType`
 
 ```solidity
@@ -641,74 +639,90 @@ The tagging record MAY consist of three attributes from the `Attestation`;
 mapping(bytes32 => mapping(address => mapping(bytes32 => bytes32))) internal _taggedAttestations;
 
 ```
-During verification, The registry retrieves the full Attestation record by the discovered attestationId.
 
-The verification state of an `ASSET` or `ENTITY` profile is directly driven by its active tagged attestations.
-When legal licenses, corporate registrations, or parent entity authorizations are tagged or revoked for an `ENTITY`, the entity's active verification standing SHOULD be updated accordingly.
-The registry exposes these states transparently. Token issuers and external protocols MAY integrate with this interface to automatically pause minting, burning, or trading when an asset's verification state degrades, but the verification framework itself remains strictly an authoritative source of truth.
+During verification,
+the registry retrieves the full `Attestation` record using the discovered `attestationId`.
+The `VerificationState` of a profile is directly driven by its active,
+tagged `Attestation` records.
+The registry exposes these states transparently.
+Token issuers and external protocols MAY integrate with this interface to support pausing mint, burn, or transfers when an `ASSET` verification state is updated.
+The verification framework itself remains strictly an authoritative source of truth.
 
 #### Smart Contract Discovery
 
-During the verification discovery process, a verifier evaluates the Asset Profile to ensure compliance. Because every registered Asset Profile explicitly binds an assetId to an underlying tokenContract, the discovery interface SHOULD expose the operational, technical, and administrative properties of that specific token contract.
+During the verification discovery process,
+a verifier evaluates the profile to ensure compliance.
+Every registered `ASSET` profile binds an `assetId` to an underlying token smart contract. 
+The discovery interface SHOULD expose the operational, technical,
+and administrative properties of that specific token contract.
 
-This enables integrating protocols, auditors, and investors to programmatically evaluate smart contract architecture and centralization risks directly alongside the asset's compliance attestations.
+This enables all parties to programmatically evaluate tokenized product's architecture.
+When discovering an `ASSET` profile,
+the interface SHOULD provide mechanisms to inspect:
 
-When discovering an Asset Profile, the interface SHOULD provide mechanisms to inspect:
+- Contract Architecture: The `tokenContract` address referenced in the `ASSET` profile, and if that contract is upgradeable (e.g., via a proxy pattern), the underlying smart contract address for where the active execution code currently lives.
+- Administrative Controls: The addressses allowed to upgrade the `tokenContract`, including any timelock mechanisms that delay code changes.
+- Operational Flags: Real-time state flags indicating whether the `tokenContract` is paused, permissioned, or enforces custom transfer restrictions.
+- Supply Authorities: The designated addresses authorized to execute mint and burn operations.
 
-Contract Architecture: The tokenContract address referenced in the Asset Profile, and, if upgradeable (e.g., via a proxy pattern), the current implementation logic address.
-Administrative Controls: The controlling upgrade administrator, multi-sig address, or timelock contract governing the Asset Profile's token.
-Operational Flags: Real-time state flags indicating whether the token contract is paused, permissioned, or enforces custom transfer restrictions.
-Supply Authorities: The designated addresses authorized to execute mint and burn operations on the asset token.
-An implementation SHOULD allow verifiers to deterministically evaluate whether the contract linked to the Asset Profile is immutable, upgradeable, paused, or subject to external administrator intervention.
+## Security Considerations
 
-### Security Considerations
+The verification engine acts as an cryptographic recordkeeper but
+cannot verify off-chain conditions.
+Consequently, the security of the framework depends entirely on the integrity of the participating actors,
+their updated attestation,
+and the execution of state changes.
 
-The Verification Engine acts as an on-chain state machine and cryptographic notarization layer; it does not independently verify physical or off-chain reality. Consequently, the security of the framework depends entirely on the integrity of the participating actors, the freshness of their attestations, and the timely execution of state changes.
+Implementation must consider the inherent boundary between off-chain events and on-chain state:
 
-Integrators and auditors MUST consider the inherent boundary between off-chain events and on-chain state:
-
-Submission Timing Latency: There is an unavoidable delay between an off-chain occurrence (e.g., a corporate insolvency, sanctions designation, or bank account seizure) and the submission of a corresponding revocation or update transaction on-chain. Malicious or compromised actors MAY exploit this latency window to trade or settle assets before the registry transitions to REVOKED or UNDERBACKED.
-Selective Omission: Authorized attestors MAY maliciously or negligently omit negative information while selectively publishing favorable attestations.
-Decoupled Custody: On-chain ownership records do not physically lock off-chain bank accounts or vault collateral; an attestation represents a point-in-time claim rather than a perpetual guarantee of collateral safety.
+There is an unavoidable delay between an off-chain occurrence and the submission of a corresponding revocation or
+update transaction on-chain.
+Authorized attestors may maliciously or negligently omit negative information while selectively publishing favorable attestations.
 
 #### Attestor Compromise
 
-A compromised or malicious Attestor private key allows unauthorized actors to publish fraudulent attestations, forge compliance claims, or maliciously revoke legitimate participant profiles. This standard cannot cryptographically prevent off-chain key compromise, regulatory coercion, or bribery.
-
-To mitigate this risk, implementations:
-
-SHOULD support multi-attestor threshold quorums (e.g., requiring 
-M
-M-of-
-N
-N independent attestors to sign off on high-value asset reserves).
-MUST implement rapid revocation mechanisms for compromised Attestor profiles in the central registry.
-SHOULD enforce short, policy-defined validity windows for volatile claims to limit the damage window of a compromised key.
+A compromised or malicious attestor private key allows unauthorized actors to publish fraudulent attestations,
+forge compliance claims, or
+maliciously revoke profiles.
+Off-chain key. safty, best practices and
+key comprise mitigation is beyond the scope of this document.
 
 #### Cryptographic Agility and ECDSA Deprecation
 
 While the framework supports standard ECDSA signatures, 
-via [EIP-712](https://eips.ethereum.org/EIPS/eip-712) for immediate compatibility with existing Externally Owned Accounts (EOAs), the underlying mathematics of elliptic curves remain vulnerable to future quantum computing advances. To ensure long-term survivability, the framework SHOULD rely on [EIP-1271](https://eips.ethereum.org/EIPS/eip-1271) (`isValidSignature`) to support upgradeable smart contract wallets. Following guidelines outlined by [NIST Post-Quantum Cryptography Standards](https://csrc.nist.gov/projects/post-quantum-cryptography).implementations **SHOULD** support a phased **Cryptographic Deprecation Phase**:
+via [EIP-712](https://eips.ethereum.org/EIPS/eip-712)
+for immediate compatibility with existing Externally Owned Accounts (EOAs).
+The underlying mathematics of elliptic curves remain vulnerable to future quantum computing advances.
+To ensure long-term survivability,
+the framework should rely on [EIP-1271](https://eips.ethereum.org/EIPS/eip-1271)
+(`isValidSignature`) to support upgradeable smart contract wallets.
+In alignment with phased migration principles established by the 
+[NIST Post-Quantum Cryptography Standards](https://csrc.nist.gov/projects/post-quantum-cryptography).Implementations should support a phased Cryptographic Deprecation Phase:
 
-* **Grandfathered Signatures:** All attestations recorded prior to an agreed protocol deprecation timestamp remain fully valid for their remaining validity window.
-* **Deprecation of Native ECDSA:** New attestations submitted using legacy elliptic curve signatures after the deprecation milestone **SHOULD** be rejected or flagged as non-compliant, requiring entities to utilize quantum-resistant smart contract wallets (e.g., via [ERC-4337](https://eips.ethereum.org/EIPS/eip-4337) or [EIP-7702](https://eips.ethereum.org/EIPS/eip-7702))
+- Grandfathered Signatures: All attestations recorded prior to an agreed protocol deprecation timestamp remain fully valid for their remaining validity window.
+- Deprecation of Native ECDSA: New attestations submitted using legacy elliptic curve signatures after the deprecation milestone should be rejected or flagged as non-compliant, requiring entities to utilize quantum-resistant smart contract wallets (e.g., via [ERC-4337](https://eips.ethereum.org/EIPS/eip-4337) or [EIP-7702](https://eips.ethereum.org/EIPS/eip-7702))
 
 #### Merkle Root Concurrency
 
-In the shielded mode, participants generate Zero-Knowledge proofs off-chain against a specific on-chain Attestation Merkle Root. In high-throughput registries, rapid issuance of new attestations will advance the Merkle root frequently.
-
-If the smart contract verifier only validates against the single latest Merkle root, transactions generated off-chain may frequently revert due to on-chain state race conditions (root front-running).
+In the shielded mode,
+participants generate Zero-Knowledge proofs off-chain against a specific on-chain Attestation Merkle Root.
+In high-throughput registries,
+rapid issuance of new attestations will advance the Merkle root frequently.
+If the verifier only validates against the single latest Merkle root,
+transactions generated off-chain may frequently revert due to on-chain state race conditions (root front-running).
 
 To mitigate this denial-of-service condition:
 
-The on-chain verifier SHOULD maintain a historical ring buffer of recent valid Merkle roots,
-consistent with the root-history pattern established in [EthSystems Shielded Pool Specification](https://github.com/ethsystems/specs/blob/main/specs/2/README.md) and [Semaphore Protocol Architecture](https://docs.semaphore.pse.dev/).
+The on-chain verifier should maintain a historical ring buffer of recent valid Merkle roots,
+consistent with the root-history pattern established in
+[EthSystems Shielded Pool Specification](https://github.com/ethsystems/specs/blob/main/specs/2/README.md) and
+[Semaphore Protocol Architecture](https://docs.semaphore.pse.dev/).
 
-The verifier MUST accept proofs generated against any root within this authorized historical window, (e.g., the last 50 to 100 valid roots).
+The verifier must accept proofs generated against any root within this authorized historical window, (e.g., the last 50 to 100 valid roots).
 
 ### Reference Implementation
 
-A compliant reference implementation SHOULD provide reference smart contracts, a test suite, a client SDK, and an end-to-end integration example.
+The reference implementation provides reference smart contracts, a test suite, a client SDK, and an end-to-end integration example.
 
 ```text
 contracts/
@@ -739,7 +753,7 @@ examples/
 
 #### Verification CLI Output Example
 
-The reference implementation SHOULD provide a command-line tool or API enabling verifiers to retrieve the complete verification state of an asset:
+The reference implementation provides a command-line tool or API enabling verifiers to retrieve the complete verification state of an asset:
 
 ```text
 $ npx tavs verify --asset 0x4a7b...
