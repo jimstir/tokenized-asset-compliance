@@ -43,9 +43,10 @@ describe("Proof of Audit & Shielded Attestations", function () {
   });
 
   describe("Shielded Submission Workflow", function () {
-    it("should accept valid proofOfAudit, bind auditor, and insert leaf into Merkle tree", async function () {
+    it("should accept valid proofOfAudit, bind auditor, insert leaf into Merkle tree, and exempt from tagging maps", async function () {
       const attType = ethers.keccak256(ethers.toUtf8Bytes("ACCREDITED_INVESTOR"));
-      const validUntil = Math.floor(Date.now() / 1000) + 86400 * 365;
+      const issuedAt = Math.floor(Date.now() / 1000);
+      const expiresAt = issuedAt + 86400 * 365;
 
       // Construct proofOfAudit payload bound to auditor.address and sampleOwnerPubkey
       const proofPayload = ethers.AbiCoder.defaultAbiCoder().encode(
@@ -57,20 +58,76 @@ describe("Proof of Audit & Shielded Attestations", function () {
 
       const tx = await attestationRegistry
         .connect(auditor)
-        .submitShieldedAttestation(sampleOwnerPubkey, attType, validUntil, proofPayload);
-      await tx.wait();
+        .submitShieldedAttestation(sampleOwnerPubkey, attType, issuedAt, expiresAt, proofPayload);
+      const receipt = await tx.wait();
 
       expect(await merkleTree.totalLeaves()).to.equal(initialLeaves + 1n);
 
-      // Verify that the key is tagged
+      // Verify that shielded attestation is recorded in shieldedAttesters
+      // Extract leaf from AttestationSubmitted event
+      const event = receipt?.logs
+        .map((log) => {
+          try {
+            return attestationRegistry.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .find((parsed) => parsed?.name === "AttestationSubmitted");
+
+      const leaf = event?.args[0];
+      expect(leaf).to.not.equal(ethers.ZeroHash);
+      expect(await attestationRegistry.getShieldedAttester(leaf)).to.equal(auditor.address);
+      expect(await attestationRegistry.isShieldedAttestationRevoked(leaf)).to.be.false;
+
+      // Verify that shielded claims MUST BE EXEMPT from relational tagging maps!
       const subjectId = ethers.toBeHex(sampleOwnerPubkey, 32);
       const taggedLeaf = await attestationRegistry.getTaggedAttestationId(subjectId, attType, auditor.address);
-      expect(taggedLeaf).to.not.equal(ethers.ZeroHash);
+      expect(taggedLeaf).to.equal(ethers.ZeroHash);
+    });
+
+    it("should allow issuing entity to revoke shielded attestation and advance revocation root", async function () {
+      const attType = ethers.keccak256(ethers.toUtf8Bytes("ACCREDITED_INVESTOR"));
+      const issuedAt = Math.floor(Date.now() / 1000);
+      const expiresAt = issuedAt + 86400 * 365;
+
+      const proofPayload = ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "uint256"],
+        [auditor.address, sampleOwnerPubkey]
+      );
+
+      const tx = await attestationRegistry
+        .connect(auditor)
+        .submitShieldedAttestation(sampleOwnerPubkey, attType, issuedAt, expiresAt, proofPayload);
+      const receipt = await tx.wait();
+
+      const event = receipt?.logs
+        .map((log) => {
+          try {
+            return attestationRegistry.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .find((parsed) => parsed?.name === "AttestationSubmitted");
+      const leaf = event?.args[0];
+
+      // Revoke the shielded attestation
+      await expect(attestationRegistry.connect(auditor).revokeShieldedAttestation(leaf))
+        .to.emit(attestationRegistry, "ShieldedAttestationRevoked");
+
+      expect(await attestationRegistry.isShieldedAttestationRevoked(leaf)).to.be.true;
+
+      // Cannot revoke twice
+      await expect(
+        attestationRegistry.connect(auditor).revokeShieldedAttestation(leaf)
+      ).to.be.revertedWithCustomError(attestationRegistry, "ShieldedLeafAlreadyRevoked");
     });
 
     it("should revert if an unauthorized front-runner attempts to use the auditor's proof", async function () {
       const attType = ethers.keccak256(ethers.toUtf8Bytes("ACCREDITED_INVESTOR"));
-      const validUntil = Math.floor(Date.now() / 1000) + 86400;
+      const issuedAt = Math.floor(Date.now() / 1000);
+      const expiresAt = issuedAt + 86400;
 
       // Proof generated for auditor.address
       const proofPayload = ethers.AbiCoder.defaultAbiCoder().encode(
@@ -82,13 +139,14 @@ describe("Proof of Audit & Shielded Attestations", function () {
       await expect(
         attestationRegistry
           .connect(frontRunner)
-          .submitShieldedAttestation(sampleOwnerPubkey, attType, validUntil, proofPayload)
+          .submitShieldedAttestation(sampleOwnerPubkey, attType, issuedAt, expiresAt, proofPayload)
       ).to.be.revertedWithCustomError(attestationRegistry, "UnauthorizedAuditor");
     });
 
     it("should revert if the proof does not match the target owner_pubkey", async function () {
       const attType = ethers.keccak256(ethers.toUtf8Bytes("ACCREDITED_INVESTOR"));
-      const validUntil = Math.floor(Date.now() / 1000) + 86400;
+      const issuedAt = Math.floor(Date.now() / 1000);
+      const expiresAt = issuedAt + 86400;
 
       const wrongPubkey = 111111111111111111111111111111n;
 
@@ -102,7 +160,7 @@ describe("Proof of Audit & Shielded Attestations", function () {
       await expect(
         attestationRegistry
           .connect(auditor)
-          .submitShieldedAttestation(sampleOwnerPubkey, attType, validUntil, proofPayload)
+          .submitShieldedAttestation(sampleOwnerPubkey, attType, issuedAt, expiresAt, proofPayload)
       ).to.be.revertedWithCustomError(attestationRegistry, "UnauthorizedAuditor");
     });
   });

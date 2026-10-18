@@ -375,7 +375,115 @@ describe("VerificationEngine (State Machine & Policy Evaluation)", function () {
     // Revoke custody attestation by custodian
     await attestationRegistry.connect(custodian).revokeAttestation(custodyId);
 
-    // Verification state is now REVOKED
+    // Two-Tier Revocation: Revoking an attestation invalidates that claim -> UNVERIFIED (policy failure)
+    expect(await verificationEngine.evaluateVerificationState(assetIdBytes)).to.equal(0); // 0 = UNVERIFIED
+  });
+
+  it("should transition to REVOKED when an explicit profile revocation is executed", async function () {
+    // Register asset
+    await profileRegistry.connect(issuer).registerAsset(
+      {
+        assetId: assetIdBytes,
+        chainId: 31337,
+        issuer: issuer.address,
+        tokenContract: await token.getAddress(),
+      },
+      {
+        assetId: assetIdBytes,
+        timestamp: await time.latest(),
+        representationRatio: 1,
+        attestationIds: [],
+        redemptionRightAttestationId: ethers.ZeroHash,
+        insolvencyProtection: ethers.ZeroHash,
+        nativeOwnership: ethers.ZeroHash,
+        extensionMetadata: [],
+      }
+    );
+
+    // Explicit profile revocation takes precedence (e.g. emergency halt or regulatory sanction)
+    await verificationEngine.setExplicitProfileRevocation(assetIdBytes, true);
     expect(await verificationEngine.evaluateVerificationState(assetIdBytes)).to.equal(3); // 3 = REVOKED
+  });
+
+  it("should enforce contextual attestationReq defined by the operator entity", async function () {
+    const [, , , , operatorSigner] = await ethers.getSigners();
+    const validUntil = (await time.latest()) + 86400 * 30;
+    const opAssetIdBytes = ethers.encodeBytes32String("OP-ASSET-REQ");
+
+    // Operator entity defines mandatory attestation requirements: CUSTODY_RESERVES + AUDIT_REPORT
+    const custodyType = ethers.keccak256(ethers.toUtf8Bytes("CUSTODY_RESERVES"));
+    const auditType = ethers.keccak256(ethers.toUtf8Bytes("AUDIT_REPORT"));
+    const redemptionType = ethers.keccak256(ethers.toUtf8Bytes("REDEMPTION_RIGHT"));
+
+    await profileRegistry.connect(operatorSigner).registerOperatorEntity(
+      ethers.encodeBytes32String("did:web:operator.com"),
+      0,
+      ethers.ZeroHash
+    );
+
+    // Set attestation requirements on operator profile
+    await profileRegistry.connect(operatorSigner).setAttestationRequirement(
+      ethers.keccak256(ethers.toUtf8Bytes("ASSET")),
+      [custodyType, auditType]
+    );
+
+    // Submit redemption
+    const redemptionInput = {
+      id: ethers.ZeroHash,
+      attestor: operatorSigner.address,
+      attestedAt: await time.latest(),
+      validUntil: validUntil,
+      subjectIdentifier: opAssetIdBytes,
+      attestationType: redemptionType,
+      visibility: 0,
+      revoked: false,
+      evidenceHash: ethers.ZeroHash,
+      evidenceURI: "",
+      signature: "0x",
+      resultData: "0x",
+    };
+    await attestationRegistry.connect(operatorSigner).submitAttestation(redemptionInput);
+    const redId = await attestationRegistry.getTaggedAttestationId(opAssetIdBytes, redemptionType, operatorSigner.address);
+
+    // Submit custody
+    const custodyInput = {
+      id: ethers.ZeroHash,
+      attestor: custodian.address,
+      attestedAt: await time.latest(),
+      validUntil: validUntil,
+      subjectIdentifier: opAssetIdBytes,
+      attestationType: custodyType,
+      visibility: 0,
+      revoked: false,
+      evidenceHash: ethers.ZeroHash,
+      evidenceURI: "",
+      signature: "0x",
+      resultData: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [100000]),
+    };
+    await attestationRegistry.connect(custodian).submitAttestation(custodyInput);
+    const custId = await attestationRegistry.getTaggedAttestationId(opAssetIdBytes, custodyType, custodian.address);
+
+    // Register asset with only custody (missing AUDIT_REPORT required by operator)
+    await profileRegistry.connect(operatorSigner).registerAsset(
+      {
+        assetId: opAssetIdBytes,
+        chainId: 31337,
+        issuer: operatorSigner.address,
+        tokenContract: await token.getAddress(),
+      },
+      {
+        assetId: opAssetIdBytes,
+        timestamp: await time.latest(),
+        representationRatio: 1,
+        attestationIds: [custId],
+        redemptionRightAttestationId: redId,
+        insolvencyProtection: ethers.ZeroHash,
+        nativeOwnership: ethers.ZeroHash,
+        extensionMetadata: [],
+      }
+    );
+
+    // Fails contextual attestationReq -> UNVERIFIED!
+    expect(await verificationEngine.evaluateVerificationState(opAssetIdBytes)).to.equal(0);
   });
 });

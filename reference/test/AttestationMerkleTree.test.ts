@@ -18,12 +18,15 @@ describe("AttestationMerkleTree", function () {
   });
 
   describe("Leaf Insertion & Root Evolution", function () {
-    it("should compute Poseidon4 leaf and update root upon insertion", async function () {
+    const sampleAttType = ethers.keccak256(ethers.toUtf8Bytes("ACCREDITED_INVESTOR"));
+
+    it("should compute Poseidon5 leaf and update root upon insertion", async function () {
       const initialRoot = await merkleTree.currentRoot();
       expect(await merkleTree.isKnownRoot(initialRoot)).to.be.true;
 
       const leafData = {
         ownerPubkey: 123456789n,
+        attestationType: sampleAttType,
         attester: registry.address,
         issuedAt: 1700000000n,
         expiresAt: 1730000000n,
@@ -48,6 +51,7 @@ describe("AttestationMerkleTree", function () {
       for (let i = 0; i < 5; i++) {
         const leafData = {
           ownerPubkey: BigInt(1000 + i),
+          attestationType: sampleAttType,
           attester: registry.address,
           issuedAt: BigInt(1700000000 + i),
           expiresAt: BigInt(1730000000 + i),
@@ -70,6 +74,7 @@ describe("AttestationMerkleTree", function () {
     it("should revert if non-registry address attempts to insert leaf", async function () {
       const leafData = {
         ownerPubkey: 123456n,
+        attestationType: sampleAttType,
         attester: unauthorized.address,
         issuedAt: 100n,
         expiresAt: 200n,

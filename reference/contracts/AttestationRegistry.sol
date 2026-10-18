@@ -22,12 +22,22 @@ contract AttestationRegistry is IAttestationRegistry {
     // Tagging Map: subjectIdentifier => attestationType => attestor => attestationId
     mapping(bytes32 => mapping(bytes32 => mapping(address => bytes32))) private _taggingMaps;
 
+    // Mapping from shielded leaf => issuing ENTITY attester address
+    mapping(bytes32 => address) public shieldedAttesters;
+
+    // Mapping from shielded leaf => revocation status
+    mapping(bytes32 => bool) public isShieldedLeafRevoked;
+
+    // Current Revocation Tree root
+    bytes32 public currentRevocationRoot;
+
     // Optional delegation for revocations: attestor => delegate => authorized
     mapping(address => mapping(address => bool)) public revocationDelegates;
 
     error NotAuthorizedAttestor(address caller);
     error AttestationAlreadyExists(bytes32 id);
     error AttestationDoesNotExist(bytes32 id);
+    error ShieldedLeafAlreadyRevoked(bytes32 leaf);
     error InitialRevocationMustBeFalse();
     error UnauthorizedRevoker(address caller, address attestor);
     error UnauthorizedAuditor();
@@ -104,11 +114,13 @@ contract AttestationRegistry is IAttestationRegistry {
 
     /**
      * @notice Submits an attestation for a SHIELDED participant with cryptographic proof of audit.
+     *         Shielded attestations are EXEMPT from on-chain relational tagging maps.
      */
     function submitShieldedAttestation(
         uint256 ownerPubkey,
         bytes32 attestationType,
-        uint64 validUntil,
+        uint64 issuedAt,
+        uint64 expiresAt,
         bytes calldata proofOfAudit
     ) external override returns (bytes32 leaf) {
         if (!profileRegistry.isRegisteredEntity(msg.sender)) {
@@ -121,27 +133,57 @@ contract AttestationRegistry is IAttestationRegistry {
             revert UnauthorizedAuditor();
         }
 
+        uint64 issuedTime = issuedAt == 0 ? uint64(block.timestamp) : issuedAt;
+
         // Insert into Shielded Merkle Tree
         TAFTypes.ShieldedAttestationLeaf memory leafData = TAFTypes.ShieldedAttestationLeaf({
             ownerPubkey: ownerPubkey,
+            attestationType: attestationType,
             attester: msg.sender,
-            issuedAt: uint64(block.timestamp),
-            expiresAt: validUntil
+            issuedAt: issuedTime,
+            expiresAt: expiresAt
         });
 
         bytes32 newRoot;
         (leaf, newRoot) = merkleTree.insertLeaf(leafData);
 
-        // Tagging map for shielded key
-        bytes32 subjectId = bytes32(ownerPubkey);
-        _taggingMaps[subjectId][attestationType][msg.sender] = leaf;
+        // Record issuing ENTITY address against the leaf value to enforce access control
+        shieldedAttesters[leaf] = msg.sender;
 
-        emit AttestationSubmitted(leaf, msg.sender, subjectId, attestationType);
+        // Shielded attestations MUST BE EXEMPT from on-chain relational Tagging Maps.
+        // A shielded attestation MUST NEVER be stored or indexed by owner_pubkey or attestationType in contract storage.
+
+        emit AttestationSubmitted(leaf, msg.sender, bytes32(ownerPubkey), attestationType);
         return leaf;
     }
 
     /**
-     * @notice Revokes an active attestation
+     * @notice Revokes a shielded attestation leaf, adding it to the Revocation Tree
+     */
+    function revokeShieldedAttestation(bytes32 leaf) external override returns (bytes32 newRevocationRoot) {
+        address attester = shieldedAttesters[leaf];
+        if (attester == address(0)) {
+            revert AttestationDoesNotExist(leaf);
+        }
+
+        if (msg.sender != attester && !revocationDelegates[attester][msg.sender]) {
+            revert UnauthorizedRevoker(msg.sender, attester);
+        }
+
+        if (isShieldedLeafRevoked[leaf]) {
+            revert ShieldedLeafAlreadyRevoked(leaf);
+        }
+
+        isShieldedLeafRevoked[leaf] = true;
+        newRevocationRoot = keccak256(abi.encodePacked(currentRevocationRoot, leaf));
+        currentRevocationRoot = newRevocationRoot;
+
+        emit ShieldedAttestationRevoked(leaf, attester, newRevocationRoot);
+        return newRevocationRoot;
+    }
+
+    /**
+     * @notice Revokes an active transparent attestation
      */
     function revokeAttestation(bytes32 attestationId) external override {
         TAFTypes.Attestation storage record = _attestations[attestationId];
@@ -179,5 +221,13 @@ contract AttestationRegistry is IAttestationRegistry {
             return false;
         }
         return true;
+    }
+
+    function isShieldedAttestationRevoked(bytes32 leaf) external view override returns (bool) {
+        return isShieldedLeafRevoked[leaf];
+    }
+
+    function getShieldedAttester(bytes32 leaf) external view override returns (address) {
+        return shieldedAttesters[leaf];
     }
 }

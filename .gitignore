@@ -46,3 +46,14 @@ cache_forge/
 Thumbs.db
 .idea/
 .vscode/
+
+# Agent & Audit Workflows
+.agent
+.agent/
+.agents
+.agents/
+.audit-*
+.solidity-auditor/
+.solidity-auditor
+*-pashov-ai-audit-report-*.md
+*audit-report*.md

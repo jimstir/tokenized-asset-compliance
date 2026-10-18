@@ -11,12 +11,29 @@ interface IProfileRegistry {
     event EntityRegistered(address indexed owner, bytes32 indexed did, TAFTypes.VisibilityPreference visibility);
     event AssetRegistered(bytes32 indexed assetId, address indexed tokenContract, address indexed issuer);
     event ParticipantRegistered(address indexed user, bytes32 indexed shieldedKeyHash, TAFTypes.VisibilityPreference visibility);
+    event AttestationRequirementSet(address indexed operator, bytes32 indexed targetProfileType, bytes32[] requiredTypes);
 
     function registerEntity(
         bytes32 did,
         TAFTypes.VisibilityPreference visibility,
         bytes32 legalDocumentHash
     ) external;
+
+    function registerOperatorEntity(
+        bytes32 did,
+        TAFTypes.VisibilityPreference visibility,
+        bytes32 legalDocumentHash
+    ) external;
+
+    function setAttestationRequirement(
+        bytes32 targetProfileType,
+        bytes32[] calldata requiredTypes
+    ) external;
+
+    function getAttestationRequirements(
+        address operator,
+        bytes32 targetProfileType
+    ) external view returns (bytes32[] memory);
 
     function registerAsset(
         TAFTypes.AssetId calldata id,
@@ -34,4 +51,5 @@ interface IProfileRegistry {
     function getEntity(address entityAddress) external view returns (TAFTypes.ENTITY memory);
     function getAsset(bytes32 assetId) external view returns (TAFTypes.ASSET memory);
     function getParticipant(address user) external view returns (TAFTypes.PARTICIPANT memory);
+    function getParticipantByShieldedKey(bytes32 shieldedKeyHash) external view returns (TAFTypes.PARTICIPANT memory);
 }

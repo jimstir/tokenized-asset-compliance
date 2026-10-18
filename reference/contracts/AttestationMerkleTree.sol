@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {TAFTypes} from "./libraries/TAFTypes.sol";
-import {Poseidon4} from "./libraries/Poseidon4.sol";
+import {Poseidon5} from "./libraries/Poseidon5.sol";
 import {IAttestationMerkleTree} from "./interfaces/IAttestationMerkleTree.sol";
 
 /**
@@ -24,11 +24,14 @@ contract AttestationMerkleTree is IAttestationMerkleTree {
     // Filled subtrees caching the current rightmost frontier
     bytes32[TREE_DEPTH] private _filledSubtrees;
 
+    // Contract owner authorized to configure registry
+    address public owner;
     // Authorized registry that can insert leaves
     address public attestationRegistry;
 
     error OnlyRegistryAllowed();
     error MerkleTreeFull();
+    error Unauthorized();
 
     modifier onlyRegistry() {
         if (msg.sender != attestationRegistry) {
@@ -38,6 +41,7 @@ contract AttestationMerkleTree is IAttestationMerkleTree {
     }
 
     constructor() {
+        owner = msg.sender;
         // Initialize zero values for incremental tree
         bytes32 currentZero = bytes32(0);
         for (uint256 i = 0; i < TREE_DEPTH; i++) {
@@ -50,6 +54,10 @@ contract AttestationMerkleTree is IAttestationMerkleTree {
     }
 
     function setAttestationRegistry(address registry) external {
+        if (msg.sender != owner) {
+            revert Unauthorized();
+        }
+        require(registry != address(0), "Zero address");
         require(attestationRegistry == address(0), "Registry already set");
         attestationRegistry = registry;
     }
@@ -64,9 +72,10 @@ contract AttestationMerkleTree is IAttestationMerkleTree {
             revert MerkleTreeFull();
         }
 
-        // Compute Poseidon4 leaf: binding ownerPubkey, attester, issuedAt, expiresAt
-        leaf = Poseidon4.hash(
+        // Compute Poseidon5 leaf: binding ownerPubkey, attestationType, attester, issuedAt, expiresAt
+        leaf = Poseidon5.hash(
             leafData.ownerPubkey,
+            leafData.attestationType,
             leafData.attester,
             leafData.issuedAt,
             leafData.expiresAt

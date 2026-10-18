@@ -23,10 +23,12 @@ library TAFTypes {
     /// @notice Entity Profile representing issuers, custodians, auditors, and operators
     struct ENTITY {
         address owner;
+        bool operator; // Flag indicating if profile operates a tokenized offering
         bytes32 did; // Optional W3C Decentralized Identifier or hash (e.g. did:web CID)
         VisibilityPreference visibility;
         bytes32 legalDocumentHash; // Hash of operational/incorporation documents
-        bool isActive;
+        bytes32[] attestationIds; // Linked attestations for entity accreditation
+        bool status; // Active status of entity
     }
 
     /// @notice Immutable identity binding for a tokenized asset
@@ -54,7 +56,7 @@ library TAFTypes {
     struct ASSET {
         AssetId id;
         AssetMetadata metadata;
-        bool isActive;
+        bool status;
     }
 
     /// @notice Participant profile (retail or institutional tokenholder)
@@ -86,6 +88,7 @@ library TAFTypes {
     /// @notice Leaf format for EthSystems Attested Shielded Pool Merkle Tree
     struct ShieldedAttestationLeaf {
         uint256 ownerPubkey; // Baby Jubjub spending public key of participant
+        bytes32 attestationType; // Standardized claim type hash
         address attester; // Compliance authority address
         uint64 issuedAt; // Issuance timestamp
         uint64 expiresAt; // Expiration timestamp

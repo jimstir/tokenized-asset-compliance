@@ -32,8 +32,31 @@ describe("ProfileRegistry", function () {
       expect(entity.owner).to.equal(auditor.address);
       expect(entity.did).to.equal(did);
       expect(entity.legalDocumentHash).to.equal(legalHash);
-      expect(entity.isActive).to.be.true;
+      expect(entity.status).to.be.true;
       expect(await profileRegistry.isRegisteredEntity(auditor.address)).to.be.true;
+    });
+
+    it("should allow an operator entity to register and set attestation requirements", async function () {
+      const did = ethers.encodeBytes32String("did:web:exchange.com");
+      const legalHash = ethers.keccak256(ethers.toUtf8Bytes("Operator-Doc"));
+      await profileRegistry.connect(issuer).registerOperatorEntity(did, 0, legalHash);
+
+      const entity = await profileRegistry.getEntity(issuer.address);
+      expect(entity.operator).to.be.true;
+      expect(entity.status).to.be.true;
+
+      const reqTypes = [
+        ethers.keccak256(ethers.toUtf8Bytes("CUSTODY_RESERVES")),
+        ethers.keccak256(ethers.toUtf8Bytes("REDEMPTION_RIGHT")),
+      ];
+      const targetType = ethers.keccak256(ethers.toUtf8Bytes("ASSET"));
+
+      await expect(profileRegistry.connect(issuer).setAttestationRequirement(targetType, reqTypes))
+        .to.emit(profileRegistry, "AttestationRequirementSet")
+        .withArgs(issuer.address, targetType, reqTypes);
+
+      const fetchedReqs = await profileRegistry.getAttestationRequirements(issuer.address, targetType);
+      expect(fetchedReqs).to.deep.equal(reqTypes);
     });
 
     it("should prevent double registration of the same entity", async function () {
@@ -84,7 +107,7 @@ describe("ProfileRegistry", function () {
       const savedAsset = await profileRegistry.getAsset(assetIdBytes);
       expect(savedAsset.id.assetId).to.equal(assetIdBytes);
       expect(savedAsset.id.issuer).to.equal(issuer.address);
-      expect(savedAsset.isActive).to.be.true;
+      expect(savedAsset.status).to.be.true;
     });
 
     it("should reject asset registration if the issuer is not a registered entity", async function () {
@@ -133,14 +156,16 @@ describe("ProfileRegistry", function () {
       expect(p.jurisdiction).to.equal(jurisdiction);
     });
 
-    it("should register a shielded participant with Baby Jubjub key hash", async function () {
+    it("should register a shielded participant with Baby Jubjub key hash and address(0)", async function () {
       const participantType = 2; // Accredited
       const fakeShieldedKeyHash = ethers.keccak256(ethers.toUtf8Bytes("babyjubjub-pubkey-sample"));
       const jurisdiction = ethers.encodeBytes32String("CH"); // Switzerland
 
       await profileRegistry.connect(participant).registerParticipant(participantType, fakeShieldedKeyHash, 1, jurisdiction);
 
-      const p = await profileRegistry.getParticipant(participant.address);
+      // Indexed by shieldedKeyHash and user address is address(0) to prevent on-chain linking
+      const p = await profileRegistry.getParticipantByShieldedKey(fakeShieldedKeyHash);
+      expect(p.user).to.equal(ethers.ZeroAddress);
       expect(p.shieldedKeyHash).to.equal(fakeShieldedKeyHash);
       expect(p.visibility).to.equal(1); // SHIELDED
     });
