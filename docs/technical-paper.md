@@ -1,8 +1,6 @@
-# Tokenization Assurance Framework (TAF): An On-Chain Architecture for Independent Verification, Regulatory Assurance, and Privacy-Preserving Trading Venues
+# Tokenization Assurance Framework (TAF): An On-Chain Framework for Independent Verification and Regulatory Assurance
 
 **Author:** Jimmy Debe (@jimstir)  
-**Status:** Best Current Practice / Proposal  
-**Category:** Standard Architecture  
 
 ---
 
@@ -10,21 +8,21 @@
 
 As the tokenization of Real-World Assets (RWAs) transitions from experimental protocols to institutional capital markets, existing operational architectures rely heavily on fragmented, opaque off-chain legal documents and self-certified claims. This reliance creates systemic vulnerabilities for market participants and secondary trading venues. Spurred by regulatory developments—most notably the U.S. Securities and Exchange Commission’s (SEC) September 2026 Request for Comment regarding exemptive relief for trading Tokenized National Market System (NMS) Stocks (Release No. 34-106402 / Innovation Exemption)—this paper specifies the **Tokenization Assurance Framework (TAF)**. 
 
-TAF defines a universal, modular on-chain assurance architecture that decouples on-chain transaction execution from off-chain independent verification. By establishing machine-readable identity profiles (`ENTITY`, `ASSET`, `PARTICIPANT`), cryptographic attestations, dynamic multi-state evaluation (`VERIFIED`, `UNVERIFIED`, `STALE`, `REVOKED`), and a zero-knowledge dual-key privacy system, TAF provides Tokenized Securities Venues (TSVs) and Automated Market Maker (AMM) Liquidity Pools with the automated infrastructure needed to verify equivalent legal rights, monitor 1:1 custody reserves, enforce concurrent trading halts, and preserve retail investor privacy without centralized gatekeeping.
+TAF defines a universal, modular on-chain assurance architecture that decouples on-chain transaction execution from off-chain independent verification. By establishing machine-readable identity profiles (`ENTITY`, `ASSET`, `PARTICIPANT`), cryptographic attestations, dynamic multi-state evaluation (`VERIFIED`, `UNVERIFIED`, `STALE`, `REVOKED`), and a zero-knowledge dual-key privacy system, TAF provides Tokenized Securities Venues (TSVs) and market infrastructure with the automated rails needed to verify equivalent legal rights, monitor 1:1 custody reserves, enforce concurrent trading halts, and preserve retail investor privacy without centralized gatekeeping.
 
 ---
 
 ## 1. Introduction & Regulatory Catalyst
 
-The tokenization of securities and real-world assets represents a paradigm shift in global market infrastructure, offering continuous settlement, operational efficiency, fractional liquidity, and composability with smart contracts. However, the intersection of distributed ledgers and heavily regulated securities markets exposes a critical structural gap: **a blockchain smart contract can enforce self-custody and transfer logic, but it cannot intrinsically verify the off-chain legal reality, custody reserves, or regulatory status of the underlying physical asset.**
+The tokenization of securities and real-world assets represents a paradigm shift in global market infrastructure, offering continuous settlement, operational efficiency, fractional liquidity, and composability with smart contracts. However, the intersection of distributed ledgers and heavily regulated securities markets exposes a critical structural gap. A blockchain smart contract can enforce self-custody and transfer logic, but it cannot intrinsically verify the off-chain legal reality of the underlying physical asset.
 
-This challenge has moved to the forefront of financial regulation. On September 17, 2026, the U.S. Securities and Exchange Commission issued an order and Request for Comment granting temporary, conditional exemptive relief to **Tokenized Securities Venues (TSVs)** from the definition of "exchange" under the Securities Exchange Act of 1934 (Release No. 34-106402 / Release 2026-90, the "Innovation Exemption"). The order permits TSVs to facilitate secondary trading of tokenized NMS common stocks using permissioned Automated Market Makers and Liquidity Pools (together, "AMM Liquidity Pools"), subject to strict operational and investor protection conditions:
+This challenge has moved to the forefront of financial regulation. On September 17, 2026, the U.S. Securities and Exchange Commission issued an order and Request for Comment granting temporary, conditional exemptive relief to Tokenized Securities Venues (TSVs) from the definition of "exchange" under the Securities Exchange Act of 1934 (Release No. 34-106402 / Release 2026-90, the "Innovation Exemption"). The order permits TSVs to facilitate secondary trading of tokenized NMS common stocks in a permissioned environment, subject to strict operational and investor protection conditions:
 
 1. **Condition 2 (Equivalent Rights & Privileges):** A TSV must independently verify that the tokenized NMS stock made available for trading provides holders with the same rights and privileges as traditional NMS stock of an equivalent class (including shareholder voting, dividend distributions, corporate actions, native legal title, insolvency protection, and physical asset redemption).
 2. **Condition 3 (Unaffiliated Tokenization Governance):** When assets are tokenized by third parties without the underlying corporate issuer’s direct participation, venues must adhere to standardized notice and objection protocols.
 3. **Condition 4 (Auditable Smart Contracts):** All smart contracts utilized by a TSV must be publicly inspectable, auditable, and deployed on an open, permissionless distributed ledger.
 4. **Condition 5 (Concurrent Trading Halts):** A TSV must halt secondary trading in a tokenized stock concurrently with any regulatory or operational trading stoppage occurring on the primary listing exchange (e.g., Nasdaq or NYSE).
-5. **Participant Gating vs. Financial Privacy:** Venues must set standards for permissioned participants to access AMM Liquidity Pools without forcing retail investors to expose their Personally Identifiable Information (PII) or entire financial transaction history on a transparent public ledger.
+5. **Participant Gating vs. Financial Privacy:** Venues must set standards for permissioned participants to access trading venues without forcing retail investors to expose their Personally Identifiable Information (PII) or entire financial transaction history on a transparent public ledger.
 
 The Tokenization Assurance Framework (TAF) was specifically designed to bridge this regulatory and technological divide. TAF replaces disparate off-chain disclosures and marketing promises with an open, machine-readable verification protocol. By providing deterministic on-chain endpoints for independent auditors, custodians, transfer agents, and trading venues, TAF equips market operators to satisfy regulatory compliance autonomously while safeguarding participant privacy.
 
@@ -100,8 +98,8 @@ TAF implements a modular, profile-based registry architecture deployed on a publ
                          ┌────────────────────┴────────────────────┐
                          ▼                                         ▼
             ┌─────────────────────────┐               ┌─────────────────────────┐
-            │   TSV AMM LIQUIDITY     │               │   TOKENIZED ASSET       │
-            │   POOLS (Condition 5)   │               │   (Mint/Burn/Transfer)  │
+            │   TRADING VENUES /      │               │   TOKENIZED ASSET       │
+            │   EXCHANGES (Cond. 5)   │               │   (Mint/Burn/Transfer)  │
             └─────────────────────────┘               └─────────────────────────┘
 ```
 
@@ -111,7 +109,7 @@ A tokenized asset is rarely supported by a single operational entity. In a fully
 * **The Qualified Custodian:** Holds the underlying physical securities in segregated accounts.
 * **The Independent Auditor:** Performs recurring physical reserve verifications.
 * **The Legal Counsel:** Opines on insolvency protection, native ownership title, and pass-through rights.
-* **The Trading Venue / Operator:** Operates the TSV AMM Liquidity Pools.
+* **The Trading Venue / Operator:** Operates the secondary trading venue or tokenized offering.
 
 Under TAF's **Mosaic Model**, no single entity is trusted blindly. Instead, independent entities register on-chain and anchor their profiles to real-world corporate credentials via W3C Decentralized Identifiers (DIDs) (e.g., `did:web:deloitte.com` or `did:web:bnymellon.com`).
 
@@ -240,7 +238,7 @@ The leaf is inserted into the incremental **Attestation Merkle Tree** (depth 20,
 > While transparent attestations are indexed in relational lookup mappings (`_taggingMaps`) for $O(1)$ discovery, **shielded attestations are explicitly exempt from relational contract storage**. A shielded claim is NEVER indexed by `owner_pubkey` or `attestationType` on-chain. Observers inspecting smart contract storage cannot determine which claim types or entities correspond to an `owner_pubkey`.
 
 ### 4.5 Off-Chain Evidence Encryption
-To prevent rainbow table and dictionary attacks against predictable plaintexts (e.g., hashing `"KYC: APPROVED"`), the off-chain evidence hosted at `evidenceURI` MUST be encrypted under the participant's Viewing Key:
+To prevent rainbow table and dictionary attacks against predictable plaintexts (e.g., hashing `"KYC: APPROVED"`), the off-chain evidence hosted at `evidenceURI` is encrypted under the participant's Viewing Key:
 
 $$\text{ciphertext} = \text{Encrypt}_{\text{ViewingKey}}(\text{AuditPayload})$$
 $$\text{evidenceHash} = \text{keccak256}(\text{ciphertext})$$
@@ -336,13 +334,13 @@ A critical innovation in TAF is the structural decoupling of **Attestation Revoc
 ### 5.3 Automated Circuit Breakers & SEC Condition 5
 Under **SEC Condition 5**, a TSV must stop trading in a tokenized NMS stock concurrently with any stoppage of trading in the underlying stock on its primary exchange (e.g., LULD halts, regulatory halts, or market-wide circuit breakers).
 
-TAF provides a standardized smart contract interface for AMM Liquidity Pools to automate this condition. Liquidity pools and token contracts integrate directly with `evaluateVerificationState(assetId)`:
+TAF provides a standardized smart contract interface for secondary venues and token contracts to automate this condition. Integrating contracts directly query `evaluateVerificationState(assetId)` during execution:
 
 ```solidity
-function swap(uint256 amountIn, address to) external returns (uint256 amountOut) {
+function transfer(address to, uint256 amount) external whenNotPaused returns (bool) {
     TAFTypes.VerificationState state = verificationEngine.evaluateVerificationState(assetId);
     
-    // Condition 5: Immediate automated halt if unverified or revoked
+    // Condition 5: Immediate automated halt if revoked or unverified
     if (state == TAFTypes.VerificationState.REVOKED) {
         revert TradingHaltedConcurrently();
     }
@@ -350,11 +348,11 @@ function swap(uint256 amountIn, address to) external returns (uint256 amountOut)
         revert AssetPolicyViolation();
     }
     
-    // Execute AMM invariant swap...
+    // Execute transfer logic...
 }
 ```
 
-When an authorized oracle or primary exchange monitoring entity detects an off-chain halt and flags the asset profile, all downstream AMM Liquidity Pools instantly freeze trading on-chain in the same transaction block, eliminating the latency and human error inherent in manual venue operations.
+When an authorized primary exchange monitoring entity or compliance authority detects an off-chain halt and flags the asset profile, all downstream contracts and trading venues immediately halt token transfers on-chain in the same transaction block, eliminating the latency and human error inherent in manual venue operations.
 
 ### 5.4 Quantitative Supply Reconciliation
 To prevent unbacked synthetic minting, the engine continuously verifies on-chain token supply against verified custody reserves:
@@ -442,18 +440,18 @@ The test suite spans 26 comprehensive unit and integration tests across 5 test s
   26 passing (751ms)
 ```
 
-### 7.3 Gas & Storage Benchmarks
-By strictly separating on-chain 32-byte commitments (`evidenceHash`) from off-chain document locations (`evidenceURI` in event logs) and avoiding persistent storage writes for `proofOfAudit`, TAF achieves significant gas efficiencies:
-* **Transparent Attestation Submission:** $\approx 68,000$ gas (including deterministic ID generation and $O(1)$ tagging map writes).
-* **Shielded Leaf Insertion (Poseidon5):** $\approx 47,000$ gas (incremental tree insertion and ring-buffer root storage).
-* **Dynamic State Evaluation:** 0 gas (view functions evaluated locally by TSV off-chain matching engines or integrated during block execution).
+### 7.3 Storage Optimization & Scalability Design
+Rather than claiming empirical gas benchmarks before mainnet deployment, TAF achieves architectural scalability by separating storage tiers:
+* **Event Log Storage:** Off-chain document locators (`evidenceURI`) are broadcast via indexed event logs rather than stored in persistent contract storage slots.
+* **Calldata Processing:** Zero-knowledge audit proofs (`proofOfAudit`) are validated directly from transaction calldata and never written to `sstore`.
+* **Dynamic Read-Only Evaluation:** Compliance state derivations (`VerificationEngine.evaluateVerificationState`) run as gasless view functions off-chain for trading venues, executing on-chain state queries only when triggered during state-modifying actions (such as token mints or transfers).
 
 ---
 
 ## 8. Security & Cryptographic Agility
 
 ### 8.1 Attestor Key Governance
-Because the integrity of the assurance layer relies on cryptographic attestations, attestor private keys must be protected using high-assurance custody solutions. Entities SHOULD utilize smart contract multi-signature wallets (e.g., Safe) or Hardware Security Modules (HSMs) configured with role-based revocation delegation.
+Because the integrity of the assurance layer relies on cryptographic attestations, attestor private keys must be protected using high-assurance custody solutions. Entities should utilize smart contract multi-signature wallets (e.g., Safe) or Hardware Security Modules (HSMs) configured with role-based revocation delegation.
 
 ### 8.2 Post-Quantum Cryptographic Agility
 While TAF currently supports ECDSA via EIP-712 for broad EVM compatibility, traditional elliptic curves face eventual quantum vulnerability. To ensure long-term sustainability, TAF supports **EIP-1271** (`isValidSignature`) smart contract wallets. This architecture enables institutions to seamlessly upgrade underlying signature algorithms (such as hash-based or lattice-based post-quantum schemes) without requiring contract migrations or breaking deployed assurance registries.

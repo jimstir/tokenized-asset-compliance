@@ -55,5 +55,7 @@ Thumbs.db
 .audit-*
 .solidity-auditor/
 .solidity-auditor
+docs/audit/
+docs/audit
 *-pashov-ai-audit-report-*.md
 *audit-report*.md

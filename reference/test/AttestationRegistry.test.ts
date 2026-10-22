@@ -41,7 +41,40 @@ describe("AttestationRegistry", function () {
   });
 
   describe("Transparent Attestation Submission & Tagging", function () {
-    it("should allow registered entity to submit an attestation and index it in the tagging map", async function () {
+    const getEIP712Signature = async (signer: any, attestation: any) => {
+      const domain = {
+        name: "Tokenization Assurance Framework",
+        version: "1",
+        chainId: (await ethers.provider.getNetwork()).chainId,
+        verifyingContract: await attestationRegistry.getAddress(),
+      };
+
+      const types = {
+        Attestation: [
+          { name: "subjectIdentifier", type: "bytes32" },
+          { name: "attestationType", type: "bytes32" },
+          { name: "attestedAt", type: "uint256" },
+          { name: "validUntil", type: "uint256" },
+          { name: "evidenceHash", type: "bytes32" },
+          { name: "evidenceURI", type: "string" },
+          { name: "resultData", type: "bytes" },
+        ],
+      };
+
+      const value = {
+        subjectIdentifier: attestation.subjectIdentifier,
+        attestationType: attestation.attestationType,
+        attestedAt: attestation.attestedAt,
+        validUntil: attestation.validUntil,
+        evidenceHash: attestation.evidenceHash,
+        evidenceURI: attestation.evidenceURI,
+        resultData: attestation.resultData,
+      };
+
+      return await signer.signTypedData(domain, types, value);
+    };
+
+    it("should allow registered entity to submit an attestation directly without signature", async function () {
       const subjectId = ethers.encodeBytes32String("NVDA-ASSET");
       const attType = ethers.keccak256(ethers.toUtf8Bytes("CUSTODY_VERIFIED"));
       const validUntil = Math.floor(Date.now() / 1000) + 86400; // 1 day validity
@@ -58,14 +91,13 @@ describe("AttestationRegistry", function () {
         revoked: false,
         evidenceHash: evidenceHash,
         evidenceURI: "ipfs://bafybeicg2ush5nhu7nacvn4cdjh22pdauuzy4v7vhox4v3w2376fbq5vy4",
-        signature: "0x1234",
+        signature: "0x",
         resultData: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [1000000]),
       };
 
       const tx = await attestationRegistry.connect(attestor).submitAttestation(attestationInput);
       await tx.wait();
 
-      // Check Tagging Map for O(1) query discovery
       const discoveredId = await attestationRegistry.getTaggedAttestationId(subjectId, attType, attestor.address);
       expect(discoveredId).to.not.equal(ethers.ZeroHash);
 
@@ -75,6 +107,118 @@ describe("AttestationRegistry", function () {
       expect(savedAtt.validUntil).to.equal(validUntil);
       expect(savedAtt.revoked).to.be.false;
       expect(await attestationRegistry.isAttestationValid(discoveredId)).to.be.true;
+    });
+
+    it("should allow submission with valid EIP-712 ECDSA signature", async function () {
+      const subjectId = ethers.encodeBytes32String("NVDA-ASSET-SIGNED");
+      const attType = ethers.keccak256(ethers.toUtf8Bytes("LEGAL_RIGHTS_VERIFIED"));
+      const validUntil = Math.floor(Date.now() / 1000) + 86400;
+      const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("Legal-Opinion-Doc"));
+      const attestedAt = Math.floor(Date.now() / 1000);
+
+      const attestationInput = {
+        id: ethers.ZeroHash,
+        attestor: attestor.address,
+        attestedAt: attestedAt,
+        validUntil: validUntil,
+        subjectIdentifier: subjectId,
+        attestationType: attType,
+        visibility: 0,
+        revoked: false,
+        evidenceHash: evidenceHash,
+        evidenceURI: "ipfs://bafybeicg2ush5nhu7nacvn4cdjh22pdauuzy4v7vhox4v3w2376fbq5vy4",
+        signature: "0x",
+        resultData: ethers.toUtf8Bytes("US-DELAWARE-GOVERNING-LAW"),
+      };
+
+      const sig = await getEIP712Signature(attestor, attestationInput);
+      attestationInput.signature = sig;
+
+      // Submit via relayer (user account)
+      const tx = await attestationRegistry.connect(user).submitAttestation(attestationInput);
+      await tx.wait();
+
+      const discoveredId = await attestationRegistry.getTaggedAttestationId(subjectId, attType, attestor.address);
+      expect(discoveredId).to.not.equal(ethers.ZeroHash);
+
+      const savedAtt = await attestationRegistry.getAttestation(discoveredId);
+      expect(savedAtt.attestor).to.equal(attestor.address);
+      expect(savedAtt.signature).to.equal(sig);
+    });
+
+    it("should verify EIP-1271 contract wallet signature", async function () {
+      // Deploy mock EIP-1271 contract wallet owned by attestor
+      const MockWallet = await ethers.getContractFactory("MockEIP1271Wallet");
+      const mockWallet = await MockWallet.deploy(attestor.address);
+      await mockWallet.waitForDeployment();
+      const walletAddress = await mockWallet.getAddress();
+
+      // Register mock wallet as an ENTITY profile in ProfileRegistry via wallet.execute
+      const regCalldata = profileRegistry.interface.encodeFunctionData("registerEntity", [
+        ethers.encodeBytes32String("did:web:smart-custody.com"),
+        0,
+        ethers.ZeroHash,
+      ]);
+      await mockWallet.connect(attestor).execute(await profileRegistry.getAddress(), regCalldata);
+
+      const subjectId = ethers.encodeBytes32String("NVDA-ASSET-1271");
+      const attType = ethers.keccak256(ethers.toUtf8Bytes("CUSTODY_VERIFIED"));
+      const validUntil = Math.floor(Date.now() / 1000) + 86400;
+      const attestedAt = Math.floor(Date.now() / 1000);
+
+      const attestationInput = {
+        id: ethers.ZeroHash,
+        attestor: walletAddress,
+        attestedAt: attestedAt,
+        validUntil: validUntil,
+        subjectIdentifier: subjectId,
+        attestationType: attType,
+        visibility: 0,
+        revoked: false,
+        evidenceHash: ethers.ZeroHash,
+        evidenceURI: "",
+        signature: "0x",
+        resultData: "0x",
+      };
+
+      // Owner of MockEIP1271Wallet signs the EIP-712 payload
+      const sig = await getEIP712Signature(attestor, attestationInput);
+      attestationInput.signature = sig;
+
+      // Relayer submits
+      const tx = await attestationRegistry.connect(user).submitAttestation(attestationInput);
+      await tx.wait();
+
+      const discoveredId = await attestationRegistry.getTaggedAttestationId(subjectId, attType, walletAddress);
+      expect(discoveredId).to.not.equal(ethers.ZeroHash);
+
+      const savedAtt = await attestationRegistry.getAttestation(discoveredId);
+      expect(savedAtt.attestor).to.equal(walletAddress);
+    });
+
+    it("should reject attestation submission with an invalid signature", async function () {
+      const subjectId = ethers.encodeBytes32String("NVDA-ASSET-BAD-SIG");
+      const attType = ethers.keccak256(ethers.toUtf8Bytes("CUSTODY_VERIFIED"));
+      const validUntil = Math.floor(Date.now() / 1000) + 86400;
+
+      const attestationInput = {
+        id: ethers.ZeroHash,
+        attestor: attestor.address,
+        attestedAt: Math.floor(Date.now() / 1000),
+        validUntil: validUntil,
+        subjectIdentifier: subjectId,
+        attestationType: attType,
+        visibility: 0,
+        revoked: false,
+        evidenceHash: ethers.ZeroHash,
+        evidenceURI: "",
+        signature: "0x123456", // Invalid malformed signature
+        resultData: "0x",
+      };
+
+      await expect(
+        attestationRegistry.connect(attestor).submitAttestation(attestationInput)
+      ).to.be.revertedWithCustomError(attestationRegistry, "InvalidAttestationSignature");
     });
 
     it("should reject attestation submission from an unregistered address", async function () {

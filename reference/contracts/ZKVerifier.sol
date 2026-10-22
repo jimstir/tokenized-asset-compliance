@@ -63,4 +63,50 @@ contract ZKVerifier is IZKVerifier {
 
         return true;
     }
+
+    /**
+     * @notice Verifies dual membership in Attestation Merkle Tree and non-membership in Revocation Tree.
+     * @dev zkProof encodes: abi.encode(boundAttestationRoot, boundRevocationRoot, boundAttestationType, boundExpiry)
+     */
+    function verifyEligibilityProof(
+        bytes32 attestationRoot,
+        bytes32 revocationRoot,
+        bytes32 attestationType,
+        uint256 minValidTimestamp,
+        bytes calldata zkProof
+    ) external pure override returns (bool) {
+        if (zkProof.length < 128 || attestationRoot == bytes32(0)) {
+            return false;
+        }
+
+        (
+            bytes32 boundAttestationRoot,
+            bytes32 boundRevocationRoot,
+            bytes32 boundAttestationType,
+            uint256 boundExpiry
+        ) = abi.decode(zkProof[:128], (bytes32, bytes32, bytes32, uint256));
+
+        // 1. Must match attested root
+        if (boundAttestationRoot != attestationRoot) {
+            return false;
+        }
+
+        // 2. Must match fresh revocation root
+        if (boundRevocationRoot != revocationRoot) {
+            return false;
+        }
+
+        // 3. Must match required claim type
+        if (boundAttestationType != attestationType) {
+            return false;
+        }
+
+        // 4. Must satisfy timestamp validity bound (0 means no expiry)
+        if (boundExpiry != 0 && boundExpiry < minValidTimestamp) {
+            return false;
+        }
+
+        return true;
+    }
 }
+

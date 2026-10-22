@@ -46,6 +46,39 @@ async function main() {
   console.log("\n3. Issuing Independent Compliance Attestations...");
   const validUntil = Math.floor(Date.now() / 1000) + 86400 * 30; // 30 days validity
 
+  const signAttestation = async (signer: any, att: any) => {
+    const domain = {
+      name: "Tokenization Assurance Framework",
+      version: "1",
+      chainId: (await ethers.provider.getNetwork()).chainId,
+      verifyingContract: await suite.attestationRegistry.getAddress(),
+    };
+
+    const types = {
+      Attestation: [
+        { name: "subjectIdentifier", type: "bytes32" },
+        { name: "attestationType", type: "bytes32" },
+        { name: "attestedAt", type: "uint256" },
+        { name: "validUntil", type: "uint256" },
+        { name: "evidenceHash", type: "bytes32" },
+        { name: "evidenceURI", type: "string" },
+        { name: "resultData", type: "bytes" },
+      ],
+    };
+
+    const value = {
+      subjectIdentifier: att.subjectIdentifier,
+      attestationType: att.attestationType,
+      attestedAt: att.attestedAt,
+      validUntil: att.validUntil,
+      evidenceHash: att.evidenceHash,
+      evidenceURI: att.evidenceURI,
+      resultData: att.resultData,
+    };
+
+    return await signer.signTypedData(domain, types, value);
+  };
+
   // A. Custody Reserve Attestation: 1,000,000 NVDA shares in physical vault
   const custodyAtt = {
     id: ethers.ZeroHash,
@@ -58,9 +91,10 @@ async function main() {
     revoked: false,
     evidenceHash: ethers.keccak256(ethers.toUtf8Bytes("Vault-Receipt-Audit-001")),
     evidenceURI: "ipfs://bafybeicg2ush5nhu7nacvn4cdjh22pdauuzy4v7vhox4v3w2376fbq5vy4",
-    signature: "0x1234",
+    signature: "0x",
     resultData: ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [1000000]),
   };
+  custodyAtt.signature = await signAttestation(custodianSigner, custodyAtt);
   await suite.attestationRegistry.connect(custodianSigner).submitAttestation(custodyAtt);
   const custodyAttId = await suite.attestationRegistry.getTaggedAttestationId(
     assetId,
@@ -81,9 +115,10 @@ async function main() {
     revoked: false,
     evidenceHash: ethers.keccak256(ethers.toUtf8Bytes("Offering-Prospectus-Redemption")),
     evidenceURI: "ipfs://bafy-prospectus",
-    signature: "0x1234",
+    signature: "0x",
     resultData: "0x",
   };
+  redemptionAtt.signature = await signAttestation(legalSigner, redemptionAtt);
   await suite.attestationRegistry.connect(legalSigner).submitAttestation(redemptionAtt);
   const redemptionAttId = await suite.attestationRegistry.getTaggedAttestationId(
     assetId,
@@ -104,9 +139,10 @@ async function main() {
     revoked: false,
     evidenceHash: ethers.keccak256(ethers.toUtf8Bytes("Bankruptcy-Remote-SPV-Trust")),
     evidenceURI: "ipfs://bafy-trust",
-    signature: "0x1234",
+    signature: "0x",
     resultData: "0x",
   };
+  insolvencyAtt.signature = await signAttestation(legalSigner, insolvencyAtt);
   await suite.attestationRegistry.connect(legalSigner).submitAttestation(insolvencyAtt);
   const insolvencyAttId = await suite.attestationRegistry.getTaggedAttestationId(
     assetId,
@@ -127,9 +163,10 @@ async function main() {
     revoked: false,
     evidenceHash: ethers.keccak256(ethers.toUtf8Bytes("Transfer-Agent-Direct-Registration")),
     evidenceURI: "ipfs://bafy-drs",
-    signature: "0x1234",
+    signature: "0x",
     resultData: "0x",
   };
+  ownershipAtt.signature = await signAttestation(legalSigner, ownershipAtt);
   await suite.attestationRegistry.connect(legalSigner).submitAttestation(ownershipAtt);
   const ownershipAttId = await suite.attestationRegistry.getTaggedAttestationId(
     assetId,

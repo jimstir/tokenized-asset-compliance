@@ -164,4 +164,142 @@ describe("Proof of Audit & Shielded Attestations", function () {
       ).to.be.revertedWithCustomError(attestationRegistry, "UnauthorizedAuditor");
     });
   });
+
+  describe("ZK Dual-Tree Eligibility & Non-Membership Verification", function () {
+    const attType = ethers.keccak256(ethers.toUtf8Bytes("ACCREDITED_INVESTOR"));
+    let attestationRoot: string;
+    let revocationRoot: string;
+    let expiresAt: number;
+    let leaf: string;
+
+    beforeEach(async function () {
+      const issuedAt = Math.floor(Date.now() / 1000);
+      expiresAt = issuedAt + 86400 * 365;
+
+      const proofPayload = ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "uint256"],
+        [auditor.address, sampleOwnerPubkey]
+      );
+
+      const tx = await attestationRegistry
+        .connect(auditor)
+        .submitShieldedAttestation(sampleOwnerPubkey, attType, issuedAt, expiresAt, proofPayload);
+      const receipt = await tx.wait();
+
+      const event = receipt?.logs
+        .map((log) => {
+          try {
+            return attestationRegistry.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .find((parsed) => parsed?.name === "AttestationSubmitted");
+      leaf = event?.args[0];
+
+      attestationRoot = await merkleTree.currentRoot();
+      revocationRoot = await attestationRegistry.currentRevocationRoot();
+    });
+
+    it("should successfully verify valid eligibility proof against active attestation and revocation roots", async function () {
+      const minValidTimestamp = Math.floor(Date.now() / 1000);
+
+      // Encode ZK proof: (boundAttestationRoot, boundRevocationRoot, boundAttestationType, boundExpiry)
+      const zkProof = ethers.AbiCoder.defaultAbiCoder().encode(
+        ["bytes32", "bytes32", "bytes32", "uint256"],
+        [attestationRoot, revocationRoot, attType, expiresAt]
+      );
+
+      const isValid = await zkVerifier.verifyEligibilityProof(
+        attestationRoot,
+        revocationRoot,
+        attType,
+        minValidTimestamp,
+        zkProof
+      );
+      expect(isValid).to.be.true;
+    });
+
+    it("should reject eligibility proof when attestation is revoked and revocation root advances", async function () {
+      const minValidTimestamp = Math.floor(Date.now() / 1000);
+
+      // Old proof was generated with pre-revocation root
+      const staleZkProof = ethers.AbiCoder.defaultAbiCoder().encode(
+        ["bytes32", "bytes32", "bytes32", "uint256"],
+        [attestationRoot, revocationRoot, attType, expiresAt]
+      );
+
+      // Attestation is revoked by auditor
+      await attestationRegistry.connect(auditor).revokeShieldedAttestation(leaf);
+      const updatedRevocationRoot = await attestationRegistry.currentRevocationRoot();
+      expect(updatedRevocationRoot).to.not.equal(revocationRoot);
+
+      // Verification fails with updated on-chain revocation root
+      const isValid = await zkVerifier.verifyEligibilityProof(
+        attestationRoot,
+        updatedRevocationRoot,
+        attType,
+        minValidTimestamp,
+        staleZkProof
+      );
+      expect(isValid).to.be.false;
+    });
+
+    it("should reject eligibility proof if attestationType does not match requirement", async function () {
+      const minValidTimestamp = Math.floor(Date.now() / 1000);
+      const otherType = ethers.keccak256(ethers.toUtf8Bytes("QUALIFIED_PURCHASER"));
+
+      const zkProof = ethers.AbiCoder.defaultAbiCoder().encode(
+        ["bytes32", "bytes32", "bytes32", "uint256"],
+        [attestationRoot, revocationRoot, attType, expiresAt]
+      );
+
+      const isValid = await zkVerifier.verifyEligibilityProof(
+        attestationRoot,
+        revocationRoot,
+        otherType, // Mismatched type
+        minValidTimestamp,
+        zkProof
+      );
+      expect(isValid).to.be.false;
+    });
+
+    it("should reject eligibility proof if proof timestamp has expired", async function () {
+      const pastExpiry = Math.floor(Date.now() / 1000) - 100;
+      const currentTimestamp = Math.floor(Date.now() / 1000);
+
+      const expiredProof = ethers.AbiCoder.defaultAbiCoder().encode(
+        ["bytes32", "bytes32", "bytes32", "uint256"],
+        [attestationRoot, revocationRoot, attType, pastExpiry]
+      );
+
+      const isValid = await zkVerifier.verifyEligibilityProof(
+        attestationRoot,
+        revocationRoot,
+        attType,
+        currentTimestamp,
+        expiredProof
+      );
+      expect(isValid).to.be.false;
+    });
+
+    it("should reject eligibility proof if attestationRoot is mismatched", async function () {
+      const minValidTimestamp = Math.floor(Date.now() / 1000);
+      const forgedAttestationRoot = ethers.keccak256(ethers.toUtf8Bytes("FORGED_ROOT"));
+
+      const zkProof = ethers.AbiCoder.defaultAbiCoder().encode(
+        ["bytes32", "bytes32", "bytes32", "uint256"],
+        [forgedAttestationRoot, revocationRoot, attType, expiresAt]
+      );
+
+      const isValid = await zkVerifier.verifyEligibilityProof(
+        attestationRoot, // Real root
+        revocationRoot,
+        attType,
+        minValidTimestamp,
+        zkProof // Forged proof
+      );
+      expect(isValid).to.be.false;
+    });
+  });
 });

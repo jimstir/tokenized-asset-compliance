@@ -6,15 +6,21 @@ import {IAttestationRegistry} from "./interfaces/IAttestationRegistry.sol";
 import {IProfileRegistry} from "./interfaces/IProfileRegistry.sol";
 import {IAttestationMerkleTree} from "./interfaces/IAttestationMerkleTree.sol";
 import {IZKVerifier} from "./interfaces/IZKVerifier.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /**
  * @title AttestationRegistry
  * @notice Central registry for issuing, indexing, tagging, and revoking compliance claims in TAF.
  */
-contract AttestationRegistry is IAttestationRegistry {
+contract AttestationRegistry is IAttestationRegistry, EIP712 {
     IProfileRegistry public immutable profileRegistry;
     IAttestationMerkleTree public immutable merkleTree;
     IZKVerifier public immutable zkVerifier;
+
+    bytes32 public constant ATTESTATION_TYPEHASH = keccak256(
+        "Attestation(bytes32 subjectIdentifier,bytes32 attestationType,uint256 attestedAt,uint256 validUntil,bytes32 evidenceHash,string evidenceURI,bytes resultData)"
+    );
 
     // Mapping from attestationId => Attestation
     mapping(bytes32 => TAFTypes.Attestation) private _attestations;
@@ -41,12 +47,13 @@ contract AttestationRegistry is IAttestationRegistry {
     error InitialRevocationMustBeFalse();
     error UnauthorizedRevoker(address caller, address attestor);
     error UnauthorizedAuditor();
+    error InvalidAttestationSignature();
 
     constructor(
         address profileRegistryAddress,
         address merkleTreeAddress,
         address zkVerifierAddress
-    ) {
+    ) EIP712("Tokenization Assurance Framework", "1") {
         profileRegistry = IProfileRegistry(profileRegistryAddress);
         merkleTree = IAttestationMerkleTree(merkleTreeAddress);
         zkVerifier = IZKVerifier(zkVerifierAddress);
@@ -57,14 +64,36 @@ contract AttestationRegistry is IAttestationRegistry {
     }
 
     /**
+     * @notice Computes EIP-712 digest for an attestation claim
+     */
+    function hashAttestation(TAFTypes.Attestation calldata attestation) public view returns (bytes32) {
+        return _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    ATTESTATION_TYPEHASH,
+                    attestation.subjectIdentifier,
+                    attestation.attestationType,
+                    attestation.attestedAt,
+                    attestation.validUntil,
+                    attestation.evidenceHash,
+                    keccak256(bytes(attestation.evidenceURI)),
+                    keccak256(attestation.resultData)
+                )
+            )
+        );
+    }
+
+    /**
      * @notice Submits a transparent compliance attestation
      */
     function submitAttestation(
         TAFTypes.Attestation calldata attestation
     ) external override returns (bytes32 id) {
+        address attestor = attestation.attestor != address(0) ? attestation.attestor : msg.sender;
+
         // Must be an active registered Entity
-        if (!profileRegistry.isRegisteredEntity(msg.sender)) {
-            revert NotAuthorizedAttestor(msg.sender);
+        if (!profileRegistry.isRegisteredEntity(attestor)) {
+            revert NotAuthorizedAttestor(attestor);
         }
 
         if (attestation.revoked) {
@@ -73,11 +102,36 @@ contract AttestationRegistry is IAttestationRegistry {
 
         uint256 attestedTime = attestation.attestedAt == 0 ? block.timestamp : attestation.attestedAt;
 
+        if (attestation.signature.length > 0) {
+            bytes32 digest = _hashTypedDataV4(
+                keccak256(
+                    abi.encode(
+                        ATTESTATION_TYPEHASH,
+                        attestation.subjectIdentifier,
+                        attestation.attestationType,
+                        attestedTime,
+                        attestation.validUntil,
+                        attestation.evidenceHash,
+                        keccak256(bytes(attestation.evidenceURI)),
+                        keccak256(attestation.resultData)
+                    )
+                )
+            );
+            if (!SignatureChecker.isValidSignatureNowCalldata(attestor, digest, attestation.signature)) {
+                revert InvalidAttestationSignature();
+            }
+        } else {
+            // Direct submission without signature requires caller to be the attestor
+            if (msg.sender != attestor) {
+                revert NotAuthorizedAttestor(msg.sender);
+            }
+        }
+
         // Deterministic ID generation based on EthSystems ported leaf parameters + attestationType
         id = keccak256(
             abi.encode(
                 attestation.subjectIdentifier,
-                msg.sender,
+                attestor,
                 attestation.attestationType,
                 attestedTime,
                 attestation.validUntil
@@ -90,7 +144,7 @@ contract AttestationRegistry is IAttestationRegistry {
 
         TAFTypes.Attestation memory record = TAFTypes.Attestation({
             id: id,
-            attestor: msg.sender,
+            attestor: attestor,
             attestedAt: attestedTime,
             validUntil: attestation.validUntil,
             subjectIdentifier: attestation.subjectIdentifier,
@@ -106,9 +160,9 @@ contract AttestationRegistry is IAttestationRegistry {
         _attestations[id] = record;
 
         // Update Tagging Map for O(1) query discovery
-        _taggingMaps[attestation.subjectIdentifier][attestation.attestationType][msg.sender] = id;
+        _taggingMaps[attestation.subjectIdentifier][attestation.attestationType][attestor] = id;
 
-        emit AttestationSubmitted(id, msg.sender, attestation.subjectIdentifier, attestation.attestationType);
+        emit AttestationSubmitted(id, attestor, attestation.subjectIdentifier, attestation.attestationType);
         return id;
     }
 

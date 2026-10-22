@@ -27,4 +27,21 @@ interface IZKVerifier {
         address targetWallet,
         bytes calldata zkp
     ) external view returns (bool);
+
+    /**
+     * @notice Verifies dual membership in Attestation Merkle Tree and non-membership in Revocation Tree.
+     * @param attestationRoot The root of the Attestation Merkle Tree
+     * @param revocationRoot The root of the Revocation Tree
+     * @param attestationType Required claim type hash
+     * @param minValidTimestamp Timestamp bound check
+     * @param zkProof The ZK proof payload
+     */
+    function verifyEligibilityProof(
+        bytes32 attestationRoot,
+        bytes32 revocationRoot,
+        bytes32 attestationType,
+        uint256 minValidTimestamp,
+        bytes calldata zkProof
+    ) external view returns (bool);
 }
+
